@@ -1,0 +1,8 @@
+[package]
+
+name = "graphite-rust"
+version = "0.0.1"
+authors = ["Xavier Lange <xrlange@gmail.com>"]
+
+[dependencies]
+byteorder = { git = "https://github.com/tureus/byteorder.git" }
