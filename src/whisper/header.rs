@@ -57,3 +57,35 @@ pub fn read_header(mut file: File) -> Header{
         }
     }
 }
+
+#[test]
+fn parses_60_1440() {
+    let path = "./test/fixtures/60-1440.wsp";
+    let open_result = whisper::file::open(path);
+
+    let expected = Header {
+        metadata: whisper::metadata::Metadata {
+            aggregation_type: whisper::metadata::AggregationType::Average,
+            max_retention: 86400,
+            x_files_factor: 1056964608,
+            archive_count: 1
+        },
+        archive_infos: vec![
+            whisper::archive_info::ArchiveInfo {
+                offset: 28,
+                seconds_per_point: 60,
+                points: 1440
+            }
+        ]
+    };
+
+    match open_result {
+        Ok(f) => {
+            let header = whisper::header::read_header(f);
+            assert_eq!(header, expected)
+        }
+        Err(_) => {
+            assert!(false)
+        }
+    }
+}
