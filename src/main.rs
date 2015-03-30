@@ -13,8 +13,8 @@ pub fn read_header(){
 
     match open_result {
         Ok(f) => {
-            let header = whisper::header::read_header(f);
-            println!("header: {:?}", header);
+            // let header = whisper::header::read_header(f);
+            println!("header: {:?}", f.header);
         }
         Err(e) => {
             println!("no file for reading! {}", e);
