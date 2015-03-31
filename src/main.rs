@@ -1,4 +1,3 @@
-#![feature(fs,path,io)]
 extern crate byteorder;
 
 pub mod whisper;
