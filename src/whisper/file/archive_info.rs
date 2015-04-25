@@ -1,5 +1,10 @@
 use std::io::Cursor;
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt, ByteOrder};
+
+use time::{get_time};
+
+use whisper::point::{Point};
+use super::write_op::{WriteOp};
 
 #[derive(PartialEq,Debug)]
 pub struct ArchiveInfo {
@@ -9,8 +14,6 @@ pub struct ArchiveInfo {
 }
 
 pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo{
-    println!("read {:?}", buf);
-
     let mut cursor = Cursor::new(buf);
     let offset = cursor.read_u32::<BigEndian>().unwrap();
     let seconds_per_point = cursor.read_u32::<BigEndian>().unwrap();
@@ -20,5 +23,11 @@ pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo{
         offset: offset,
         seconds_per_point: seconds_per_point,
         points: points
+    }
+}
+
+impl ArchiveInfo {
+    pub fn write(&self, point: &Point) -> WriteOp {
+        return WriteOp{offset: self.offset, value: point.value};
     }
 }

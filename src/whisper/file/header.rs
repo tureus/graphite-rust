@@ -66,6 +66,7 @@ fn parses_60_1440() {
     let path = "./test/fixtures/60-1440.wsp";
     let open_result = file::open(path);
 
+    // A literal Header
     let expected = Header {
         metadata: metadata::Metadata {
             aggregation_type: metadata::AggregationType::Average,

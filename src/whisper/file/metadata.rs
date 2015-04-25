@@ -19,8 +19,6 @@ pub struct Metadata {
 }
 
 pub fn slice_to_metadata(buf: &[u8]) -> Metadata {
-    println!("buf {:?}", buf);
-
     let mut cursor = Cursor::new(buf);
 
     let aggregation_type = cursor.read_u32::<BigEndian>().unwrap();

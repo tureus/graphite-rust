@@ -6,3 +6,13 @@ authors = ["Xavier Lange <xrlange@gmail.com>"]
 
 [dependencies]
 byteorder = "*"
+gcc = "*"
+time = "*"
+
+# The documentation profile, used for `cargo doc`
+[profile.doc]
+opt-level = 0
+debug = true
+rpath = false
+lto = false
+debug-assertions = true
