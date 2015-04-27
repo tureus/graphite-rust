@@ -7,7 +7,8 @@ pub enum AggregationType {
     Sum,
     Last,
     Max,
-    Min
+    Min,
+    Unknown
 }
 
 #[derive(PartialEq,Debug)]
@@ -42,6 +43,6 @@ fn aggregation_type_from_id(id: u32) -> AggregationType{
         3 => AggregationType::Last,
         4 => AggregationType::Max,
         5 => AggregationType::Min,
-        _ => AggregationType::Average
+        _ => AggregationType::Unknown
     }
 }

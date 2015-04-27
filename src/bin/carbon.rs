@@ -1,7 +1,5 @@
-extern crate time;
-extern crate byteorder;
-
-pub mod whisper;
+extern crate graphite;
+use graphite::whisper;
 
 pub fn main(){
     let test_point = whisper::point::Point{value: 0.0, time: 1000};

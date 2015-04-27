@@ -1,8 +1,14 @@
 [package]
-
-name = "graphite_rust"
+name = "graphite-rust"
 version = "0.0.1"
 authors = ["Xavier Lange <xrlange@gmail.com>"]
+
+[lib]
+name="graphite"
+path="src/lib.rs"
+
+[[bin]]
+name="carbon"
 
 [dependencies]
 byteorder = "*"
