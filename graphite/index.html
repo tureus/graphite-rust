@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `graphite` crate.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, graphite">
+
+    <title>graphite - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../main.css">
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <section class="sidebar">
+        
+        <p class='location'></p><script>window.sidebarCurrent = {name: 'graphite', ty: 'mod', relpath: '../'};</script>
+    </section>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press 'S' to search, '?' for more options..."
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content mod">
+<h1 class='fqn'><span class='in-band'>Crate <a class='mod' href=''>graphite</a></span><span class='out-of-band'><span id='render-detail'>
+            <a id="toggle-all-docs" href="#" title="collapse all docs">[-]</a>
+        </span><a id='src-0' class='srclink' href='../src/graphite/lib.rs.html#1-41' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'>
+<h1 id="graphite-rust" class='section-header'><a
+                           href="#graphite-rust">graphite-rust</a></h1>
+<p>Herein lies a humble reimplementation of the graphite metrics system.
+It&#39;s a time series database system, with frontend and management tools,
+that strikes a reasonable balance between features, ease of management, and
+a nice network of tools which can talk to graphite.</p>
+
+<p><code>graphite-rust</code> aims to maintain total compatibility with features and file format
+of your normal graphite installation. Just made easier by one
+binary. And possibly higher performance but that&#39;s not the main goal right now.
+Although I am pursing a batch-write model out the gate -- but that&#39;s mostly to understand how to work with vectors.</p>
+
+<p>This work falls under the name <code>graphite</code> but in reality the package has distinct components you may want to understand:</p>
+
+<ul>
+<li><a href="whisper/index.html"><code>whisper</code></a> - all the heavy lifting for parsing and writing to whisper database files</li>
+<li><code>carbon</code> - the network daemon which mediates access to whisper files</li>
+<li><code>graphite</code> - the HTTP REST server which handles queries. It has a minimal HTML
+application for creating dashboard but I&#39;ll be skipping that. For dashboard you&#39;ll want <a href="http://grafana.org/"><code>grafana</code></a>.</li>
+</ul>
+
+<p>Status of the codes:</p>
+
+<ul>
+<li><code>whisper</code>
+
+<ul>
+<li><em>DOES</em> open and parse header/metadata/archive info</li>
+<li><em>IN PROGRESS</em> take a metric value and provide a WriteOp</li>
+<li><em>NOT STARTED</em> write <code>vec![WriteOp]</code> to file</li>
+</ul></li>
+<li><code>carbon</code>
+
+<ul>
+<li><em>DOESN&#39;T DO ANYTHING</em></li>
+</ul></li>
+<li><code>graphite</code>
+
+<ul>
+<li><em>DOESN&#39;T EXIST</em></li>
+</ul></li>
+</ul>
+
+<h2 id="also,-this-is-brand-new-code.-in-the-true-rust-spirit-it-does-not-guarantee-the-safety-of-your-kittens." class='section-header'><a
+                           href="#also,-this-is-brand-new-code.-in-the-true-rust-spirit-it-does-not-guarantee-the-safety-of-your-kittens.">Also, this is brand-new code. In the true rust spirit it does not guarantee the safety of your kittens.</a></h2></div><h2 id='modules' class='section-header'><a href="#modules">Modules</a></h2>
+<table>
+                    <tr class=' module-item'>
+                        <td><a class='mod' href='whisper/index.html'
+                               title='graphite::whisper'>whisper</a></td>
+                        <td class='docblock short'>
+                             <p>All the code necessary for creating, reading, and updating
+whisper database files. The &#39;standard&#39; for whisper files is defined
+primarily from the source code. It&#39;s a straight-forward format for
+static allocation of time-series</p>
+
+                        </td>
+                    </tr>
+                </table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <div id="help" class="hidden">
+        <div class="shortcuts">
+            <h1>Keyboard shortcuts</h1>
+            <dl>
+                <dt>?</dt>
+                <dd>Show this help dialog</dd>
+                <dt>S</dt>
+                <dd>Focus the search field</dd>
+                <dt>&larrb;</dt>
+                <dd>Move up in search results</dd>
+                <dt>&rarrb;</dt>
+                <dd>Move down in search results</dd>
+                <dt>&#9166;</dt>
+                <dd>Go to active search result</dd>
+            </dl>
+        </div>
+        <div class="infos">
+            <h1>Search tricks</h1>
+            <p>
+                Prefix searches with a type followed by a colon (e.g.
+                <code>fn:</code>) to restrict the search to a given type.
+            </p>
+            <p>
+                Accepted types are: <code>fn</code>, <code>mod</code>,
+                <code>struct</code>, <code>enum</code>,
+                <code>trait</code>, <code>typedef</code> (or
+                <code>tdef</code>).
+            </p>
+        </div>
+    </div>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "graphite";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../jquery.js"></script>
+    <script src="../main.js"></script>
+    
+    <script async src="../search-index.js"></script>
+</body>
+</html>
