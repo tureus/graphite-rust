@@ -27,7 +27,7 @@ pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo{
 }
 
 impl ArchiveInfo {
-    pub fn write(&self, point: &Point) -> WriteOp {
+    pub fn calculate_write_op(&self, point: &Point) -> WriteOp {
         return WriteOp{offset: self.offset, value: point.value};
     }
 }

@@ -14,6 +14,8 @@ name="carbon"
 byteorder = "*"
 gcc = "*"
 time = "*"
+log = "*"
+env_logger = "*"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]

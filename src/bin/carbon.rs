@@ -1,7 +1,14 @@
 extern crate graphite;
+
+#[macro_use]
+extern crate log;
+extern crate env_logger;
+
 use graphite::whisper;
 
 pub fn main(){
+    env_logger::init().unwrap();
+
     let test_point = whisper::point::Point{value: 0.0, time: 1000};
     write_test_point(test_point);
 
@@ -14,6 +21,6 @@ pub fn write_test_point(point: whisper::point::Point){
 
     match open_result {
         Ok(f) => f.write(point),
-        Err(e) => println!("no file for reading! {}", e)
+        Err(e) => error!("no file for reading! {}", e)
     }
 }

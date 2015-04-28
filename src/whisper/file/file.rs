@@ -16,6 +16,7 @@ pub struct WhisperFile<'a> {
 
 // TODO: Change error value to generic Error
 pub fn open(path:& str) -> Result<WhisperFile, &'static str> {
+    debug!("opening file");
     let file_handle = File::open(Path::new(path));
 
     match file_handle {
@@ -44,11 +45,11 @@ impl<'a> WhisperFile<'a> {
         // get archive
         // calculate archive data offset + point offset
         // 
-        println!("file: {:?}\npoint: {:?}", self, point);
+        debug!("writing point: {:?}", point);
     }
 
     pub fn calculate_write_ops(&self, point: point::Point) -> Vec<WriteOp> {
-        return self.header.archive_infos.iter().map(|ai| ai.write(&point) ).collect();
+        return self.header.archive_infos.iter().map(|ai| ai.calculate_write_op(&point) ).collect();
     }
 
     pub fn read(&self, timestamp: u32) -> point::Point {
