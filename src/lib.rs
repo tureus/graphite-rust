@@ -2,15 +2,13 @@
 
 # graphite-rust
 
-Herein lies a humble reimplementation of the graphite metrics system.
-It's a time series database system, with frontend and management tools,
-that strikes a reasonable balance between features, ease of management, and
-a nice network of tools which can talk to graphite.
+Herein lies a humble reimplementation of the graphite metrics system -- a time series database system,
+with HTTP frontend and management tools.
+It strikes a reasonable balance between features you need, easy management, and a rich ecosystem of tools which can talk to graphite.
 
-`graphite-rust` aims to maintain total compatibility with features and file format
-of your normal graphite installation. Just made easier by one
-binary. And possibly higher performance but that's not the main goal right now.
-Although I am pursing a batch-write model out the gate -- but that's mostly to understand how to work with vectors.
+`graphite-rust` aims to maintain total compatibility in both features and file formats.
+The big selling point should be the ease of installation: it's just one
+binary. It may be higher performance but that's not the main goal.
 
 This work falls under the name `graphite` but in reality the package has distinct components you may want to understand:
 
