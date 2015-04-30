@@ -78,7 +78,8 @@ fn parses_60_1440() {
             archive_info::ArchiveInfo {
                 offset: 28,
                 seconds_per_point: 60,
-                points: 1440
+                points: 1440,
+                retention: 60*1440
             }
         ]
     };

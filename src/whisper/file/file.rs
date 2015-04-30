@@ -2,11 +2,15 @@
 use std::fs::File;
 use std::path::Path;
 
-use super::header::{Header, read_header};
-use super::metadata;
-use super::archive_info;
-use super::write_op::{WriteOp};
+use super::header::{ Header, read_header };
+use super::write_op::{ WriteOp };
+
+use super::metadata::{ Metadata, AggregationType };
+#[allow(dead_code)]
+use super::archive_info::{ ArchiveInfo };
 use whisper::point;
+
+use time::{ get_time };
 
 #[derive(Debug)]
 pub struct WhisperFile<'a> {
@@ -48,11 +52,27 @@ impl<'a> WhisperFile<'a> {
         debug!("writing point: {:?}", point);
     }
 
-    pub fn calculate_write_ops(&self, point: point::Point) -> Vec<WriteOp> {
-        return self.header.archive_infos.iter().map(|ai| ai.calculate_write_op(&point) ).collect();
+    pub fn calculate_write_ops(&self, current_time: u32, point: point::Point) -> Vec<WriteOp> {
+        // let current_time = get_time().sec as u32;
+        let hp_ai_option = self.header.archive_infos.iter().find(|ai|
+            (current_time - point.time) < ai.retention
+        );
+
+        let write_ops = vec![];
+
+        match hp_ai_option {
+            Some(ai) => {
+                write_ops
+            }
+            None => {
+                write_ops
+            }
+        }
+
+        // return self.header.archive_infos.iter().map(|ai| ai.calculate_write_op(&point) ).collect();
     }
 
-    pub fn read(&self, timestamp: u32) -> point::Point {
+    pub fn read(&self) -> point::Point {
         point::Point{value: 10.0, time: 10}
     }
 }
@@ -63,28 +83,32 @@ fn has_write_ops(){
     let whisper_file = WhisperFile{
         path: "/a/nonsense/path",
         header: Header {
-            metadata: metadata::Metadata {
-                aggregation_type: metadata::AggregationType::Average,
+            metadata: Metadata {
+                aggregation_type: AggregationType::Average,
                 max_retention: 86400,
                 x_files_factor: 1056964608,
                 archive_count: 1
             },
             archive_infos: vec![
-                archive_info::ArchiveInfo {
+                ArchiveInfo {
                     offset: 28,
                     seconds_per_point: 60,
-                    points: 1440
+                    points: 1440,
+                    retention: 60 * 1440
                 },
-                archive_info::ArchiveInfo {
+                ArchiveInfo {
                     offset: 56,
                     seconds_per_point: 60,
-                    points: 1440
+                    points: 1440,
+                    retention: 60 * 1440
                 }
             ]
         }
     };
 
+    let fixture_time = 20;
     let write_ops = whisper_file.calculate_write_ops(
+        fixture_time,
         point::Point{value: 0.0, time: 10}
     );
 
