@@ -1,5 +1,7 @@
 #[derive(PartialEq,Debug)]
+
+
 pub struct Point {
-    pub time: u32,
-    pub value: f32
+    pub timestamp: u32,
+    pub value: f64
 }

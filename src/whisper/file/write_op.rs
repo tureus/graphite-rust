@@ -1,7 +1,5 @@
-use whisper::point::{Point};
-
 #[derive(PartialEq,Debug)]
-pub struct WriteOp{
+pub struct WriteOp {
     pub offset: u32,
-    pub value: f32
+    pub bytes: [u8; 12]
 }
