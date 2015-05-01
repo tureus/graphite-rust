@@ -1,8 +1,7 @@
-use std::io::{ Cursor, BufWriter, SeekFrom  };
-use byteorder::{ BigEndian, ReadBytesExt, WriteBytesExt, ByteOrder };
+use std::io::{ Cursor, SeekFrom  };
+use byteorder::{ BigEndian, ReadBytesExt, ByteOrder };
 
 use whisper::point::{Point, POINT_SIZE};
-use super::write_op::{WriteOp};
 
 #[derive(PartialEq,Debug)]
 pub struct ArchiveInfo {
@@ -33,7 +32,7 @@ pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
 
 impl ArchiveInfo {
     pub fn calculate_seek(&self, point: &Point, base_point: &Point) -> SeekFrom {
-        if(base_point.timestamp == 0){
+        if base_point.timestamp == 0 {
             return SeekFrom::Start(0);
         } else {
 
@@ -46,20 +45,10 @@ impl ArchiveInfo {
             };
 
             return SeekFrom::Start(file_offset);
-
-//            let mut output_data = [0; 12];
-//            {
-//                let interval_ceiling = point.timestamp - (point.timestamp % self.seconds_per_point);
-//                let mut buf : &mut [u8] = &mut output_data;
-//                let mut writer = BufWriter::new(buf);
-//                writer.write_u32::<BigEndian>(interval_ceiling).unwrap();
-//                writer.write_f64::<BigEndian>(point.value);
-//            }
-
-//            return WriteOp {
-//                offset: file_offset,
-//                bytes: output_data
-//            };
         }
+    }
+
+    pub fn interval_ceiling(&self, point: &Point) -> u32 {
+        point.timestamp - (point.timestamp % self.seconds_per_point as u32)
     }
 }
