@@ -1,5 +1,7 @@
+use std::io::SeekFrom;
+
 #[derive(PartialEq,Debug)]
 pub struct WriteOp {
-    pub offset: u32,
+    pub seek: SeekFrom,
     pub bytes: [u8; 12]
 }
