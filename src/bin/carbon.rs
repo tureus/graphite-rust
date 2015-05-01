@@ -9,7 +9,7 @@ use graphite::whisper;
 pub fn main(){
     env_logger::init().unwrap();
 
-    let test_point = whisper::point::Point{value: 0.0, time: 1000};
+    let test_point = whisper::point::Point{value: 0.0, timestamp: 1000};
     write_test_point(test_point);
 
     return;

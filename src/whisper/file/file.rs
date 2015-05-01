@@ -55,7 +55,7 @@ impl<'a> WhisperFile<'a> {
     pub fn calculate_write_ops(&self, current_time: u32, point: point::Point) -> Vec<WriteOp> {
         // let current_time = get_time().sec as u32;
         let hp_ai_option = self.header.archive_infos.iter().find(|ai|
-            (current_time - point.time) < ai.retention
+            (current_time - point.timestamp) < ai.retention
         );
 
         let write_ops = vec![];
@@ -73,7 +73,7 @@ impl<'a> WhisperFile<'a> {
     }
 
     pub fn read(&self) -> point::Point {
-        point::Point{value: 10.0, time: 10}
+        point::Point{value: 10.0, timestamp: 10}
     }
 }
 
@@ -109,7 +109,7 @@ fn has_write_ops(){
     let fixture_time = 20;
     let write_ops = whisper_file.calculate_write_ops(
         fixture_time,
-        point::Point{value: 0.0, time: 10}
+        point::Point{value: 0.0, timestamp: 10}
     );
 
     let expected = vec![

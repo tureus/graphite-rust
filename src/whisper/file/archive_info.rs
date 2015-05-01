@@ -1,6 +1,6 @@
-use std::io::Cursor;
+use std::io::{ Cursor, BufWriter, Write };
 use std::mem::{ size_of };
-use byteorder::{ BigEndian, ReadBytesExt, WriteBytesExt, ByteOrder };
+use byteorder::{ BigEndian, ReadBytesExt, ByteOrder };
 
 use whisper::point::{Point, POINT_SIZE};
 use super::write_op::{WriteOp};
@@ -46,12 +46,15 @@ impl ArchiveInfo {
                 self.offset + (bytes_away_from_offset % (self.size_in_bytes as u32))
             };
 
-            let output_data = [0; 12];
+            let mut output_data : [u8; 12] = [0; 12];
             {
-                let interval_ceiling = point.timestamp - (point.timestamp % self.seconds_per_point);
-                let mut cursor = Cursor::new(&mut output_data);
-                cursor.write_u32::<BigEndian>(interval_ceiling).unwrap();
-                cursor.write_f64::<BigEndian>(point.value);
+                //let interval_ceiling = point.timestamp - (point.timestamp % self.seconds_per_point);
+                let mut buf : &[u8] = &output_data;
+                let mut writer = BufWriter::new(buf);
+                //writer.write_be_u32(interval_ceiling);
+                //writer.write_be_f64(point.value);
+                //writer.write_u32::<BigEndian>(interval_ceiling).unwrap();
+                //writer.write_f64::<BigEndian>(point.value).unwrap();
             }
 
             return WriteOp {

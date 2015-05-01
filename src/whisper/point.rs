@@ -8,4 +8,4 @@ pub struct Point {
     pub value: f64
 }
 
-const POINT_SIZE : usize = size_of::<Point>();
+pub const POINT_SIZE : usize = 12;
