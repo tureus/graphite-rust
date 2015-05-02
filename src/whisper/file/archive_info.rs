@@ -31,13 +31,13 @@ pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
 }
 
 impl ArchiveInfo {
-    pub fn calculate_seek(&self, point: &Point, base_point: &Point) -> SeekFrom {
-        if base_point.timestamp == 0 {
+    pub fn calculate_seek(&self, point: &Point, base_timestamp: u32) -> SeekFrom {
+        if base_timestamp == 0 {
             return SeekFrom::Start(0);
         } else {
 
             let file_offset = {
-                let time_since_base_time = (point.timestamp - base_point.timestamp) as u64;
+                let time_since_base_time = (point.timestamp - base_timestamp) as u64;
                 let points_away_from_base_time = time_since_base_time / self.seconds_per_point;
                 let point_size = POINT_SIZE as u64;
                 let bytes_away_from_offset = (points_away_from_base_time * point_size) as u64;

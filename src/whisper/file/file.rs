@@ -1,7 +1,7 @@
 // use std::io::Error;
 use std::fs::File;
-use std::io::{BufWriter};
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
+use std::io::{BufWriter, SeekFrom, Cursor};
+use byteorder::{ByteOrder, BigEndian, WriteBytesExt, ReadBytesExt};
 use std::path::Path;
 
 use super::header::{ Header, read_header };
@@ -25,13 +25,8 @@ pub fn open(path:& str) -> Result<WhisperFile, &'static str> {
     match file_handle {
         Ok(f) => {
             let header = try!(read_header(f));
-
-            Ok(
-                WhisperFile {
-                    path: path,
-                    header: header
-                }
-            )
+            let whisper_file = WhisperFile { path: path, header: header };
+            Ok( whisper_file )
         },
         Err(_) => {
             Err("generic file error")
@@ -44,41 +39,68 @@ impl<'a> WhisperFile<'a> {
     // other processes may open the file and modify the contents
     // which would be bad. It's your job, the caller, to make sure
     // the system can't do that.
-    pub fn write(&self, point: point::Point){ 
-        // get archive
-        // calculate archive data offset + point offset
-        // 
-        debug!("writing point: {:?}", point);
-    }
-
-    pub fn calculate_write_ops(&self, current_time: u32, point: point::Point) -> Vec<WriteOp> {
-        // let current_time = get_time().sec as u32;
-        let mut archive_iter = self.header.archive_infos.iter();
-        
-        let hp_ai_option = archive_iter.find(|ai|
-            (current_time - point.timestamp) < ai.retention as u32
-        ); 
-        let mut rest_of_archives = archive_iter;
-
-        let low_res_archives : Vec<&ArchiveInfo> = rest_of_archives.collect();
-
-        let write_ops = vec![];
-        match hp_ai_option {
-            Some(ai) => {
-                write_ops
-            }
+    pub fn write(&self, file: File, current_time: u32, point: point::Point) -> Vec<WriteOp>{ 
+        let try_split = self.split_archives(current_time, point.timestamp);
+        match try_split {
+            Some( split ) => {
+                let high_precision_archive = split.ref0();
+                let base_point = read_point(file, high_precision_archive.offset);
+                let base_timestamp = base_point.timestamp;
+                self.calculate_write_ops(split, base_timestamp)
+            },
             None => {
-                write_ops
+                panic!("no archives satisfy current time")
             }
         }
     }
 
-    pub fn read(&self) -> point::Point {
-        point::Point{value: 10.0, timestamp: 10}
+    fn split_archives(&self, current_time: u32, point_timestamp: u32) -> Option<(ArchiveInfo, Vec<ArchiveInfo>)>  {
+        let mut archive_iter = self.header.archive_infos.iter();
+        
+        let hp_ai_option = archive_iter.find(|ai|
+            (current_time - point_timestamp) < ai.retention as u32
+        );
+
+        match hp_ai_option {
+            Some(ai) => {
+                let mut rest_of_archives = archive_iter;
+                let low_res_archives : Vec<&ArchiveInfo> = rest_of_archives.collect();
+
+                (ai, low_res_archives)
+            },
+            None => {
+                None
+            }
+        }
+    }
+
+    pub fn calculate_write_ops(&self, split: (ArchiveInfo, Vec<ArchiveInfo>), point: point::Point, base_timestamp: u32) -> Vec<WriteOp> {
+        let mut write_ops = vec![];
+
+        {
+            let ai = split.ref1();
+            let write_op = build_write_op( ai, point, base_timestamp );
+            write_ops.push( write_op );
+        }
+
+
+        write_ops
     }
 }
 
-fn build_write_op(current_time: u32, archive_info: ArchiveInfo, point: point::Point, base_point: point::Point) -> WriteOp {
+fn read_point(file: File, offset: u32) -> point::Point {
+    file.seek(SeekFrom::Start(offset));
+    let mut points_buf : &[u8; 12] = &[0; 12];
+    file.read(points_buf);
+
+    let mut cursor = Cursor::new(points_buf);
+    let timestamp = cursor.read_u32::<BigEndian>().unwrap();
+    let value = cursor.read_f64::<BigEndian>().unwrap();
+
+    point::Point{ timestamp: timestamp, value: value }
+}
+
+fn build_write_op(archive_info: ArchiveInfo, point: point::Point, base_timestamp: u32) -> WriteOp {
     let mut output_data = [0; 12];
     let interval_ceiling = archive_info.interval_ceiling(&point);
 
@@ -90,7 +112,7 @@ fn build_write_op(current_time: u32, archive_info: ArchiveInfo, point: point::Po
         writer.write_f64::<BigEndian>(point_value);
     }
 
-    let seek_info = archive_info.calculate_seek(&point, &base_point);
+    let seek_info = archive_info.calculate_seek(&point,  base_timestamp);
 
     return WriteOp {
         seek: seek_info,
