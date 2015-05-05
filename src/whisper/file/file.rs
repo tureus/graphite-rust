@@ -53,7 +53,8 @@ impl<'a> WhisperFile<'a> {
         match pair {
             Some( (high_precision_archive, rest) ) => {
                 let base_point = {
-                    self.read_point(high_precision_archive.offset)
+                    let f = &mut self.handle;
+                    read_point(f, high_precision_archive.offset)
                 };
                 let base_timestamp = base_point.timestamp;
                 self.calculate_write_ops( (high_precision_archive, rest) , point, base_timestamp)
@@ -95,35 +96,34 @@ impl<'a> WhisperFile<'a> {
 
         write_ops
     }
+}
 
-    fn read_point(&mut self, offset: u64) -> point::Point {
-        let seek = self.handle.seek(SeekFrom::Start(offset));
+fn read_point(file: &mut File, offset: u64) -> point::Point {
+    let seek = file.seek(SeekFrom::Start(offset));
 
-        match seek {
-            Ok(_) => {
-                let mut points_buf : [u8; 12] = [0; 12];
-                let mut buf_ref : &mut [u8] = &mut points_buf;
-                let read = self.handle.read(buf_ref);
+    match seek {
+        Ok(_) => {
+            let mut points_buf : [u8; 12] = [0; 12];
+            let mut buf_ref : &mut [u8] = &mut points_buf;
+            let read = file.read(buf_ref);
 
-                match read {
-                    Ok(_) => {
-                        let mut cursor = Cursor::new(buf_ref);
-                        let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
-                        let value = cursor.read_f64::<BigEndian>().unwrap();
+            match read {
+                Ok(_) => {
+                    let mut cursor = Cursor::new(buf_ref);
+                    let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
+                    let value = cursor.read_f64::<BigEndian>().unwrap();
 
-                        point::Point{ timestamp: timestamp, value: value }
-                    },
-                    Err(err) => {
-                        panic!("read point {:?}", err)
-                    }
+                    point::Point{ timestamp: timestamp, value: value }
+                },
+                Err(err) => {
+                    panic!("read point {:?}", err)
                 }
-            },
-            Err(err) => {
-                panic!("read_point {:?}", err)
             }
+        },
+        Err(err) => {
+            panic!("read_point {:?}", err)
         }
     }
-
 }
 
 fn build_write_op(archive_info: &ArchiveInfo, point: point::Point, base_timestamp: u64) -> WriteOp {
