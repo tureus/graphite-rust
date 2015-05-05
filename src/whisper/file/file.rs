@@ -45,8 +45,12 @@ impl<'a> WhisperFile<'a> {
     // other processes may open the file and modify the contents
     // which would be bad. It's your job, the caller, to make sure
     // the system can't do that.
-    pub fn write(&self, current_time: u64, point: point::Point) -> Vec<WriteOp>{ 
-        match self.split_archives(current_time, point.timestamp) {
+    pub fn write(&mut self, current_time: u64, point: point::Point) -> Vec<WriteOp>{ 
+        let pair = {
+            self.split_archives(current_time, point.timestamp)
+        };
+
+        match pair {
             Some( (high_precision_archive, rest) ) => {
                 let base_point = {
                     self.read_point(high_precision_archive.offset)
@@ -92,7 +96,7 @@ impl<'a> WhisperFile<'a> {
         write_ops
     }
 
-    fn read_point(&self, offset: u64) -> point::Point {
+    fn read_point(&mut self, offset: u64) -> point::Point {
         let seek = self.handle.seek(SeekFrom::Start(offset));
 
         match seek {
