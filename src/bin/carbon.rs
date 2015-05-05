@@ -20,7 +20,10 @@ pub fn write_test_point(point: whisper::point::Point){
     let open_result = whisper::file::open(path);
 
     match open_result {
-        Ok(f) => f.write(point),
+        Ok(f) => {
+            f.write(f, 1001, point);
+            return
+        },
         Err(e) => error!("no file for reading! {}", e)
     }
 }

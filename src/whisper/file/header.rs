@@ -17,7 +17,7 @@ pub struct Header{
 }
 
 // TODO change to Result<File,String> type
-pub fn read_header(mut file: File) -> Result<Header, &'static str>{
+pub fn read_header(mut file: &File) -> Result<Header, &'static str>{
     let header_buffer = &mut[0u8; HEADER_SIZE];
     let metadata_read_result = file.read(header_buffer);
 

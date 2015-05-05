@@ -1,10 +1,8 @@
-use std::mem::{size_of};
-
 #[derive(PartialEq,Debug)]
 
 
 pub struct Point {
-    pub timestamp: u32,
+    pub timestamp: u64,
     pub value: f64
 }
 

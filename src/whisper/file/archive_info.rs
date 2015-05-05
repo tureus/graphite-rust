@@ -31,7 +31,7 @@ pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
 }
 
 impl ArchiveInfo {
-    pub fn calculate_seek(&self, point: &Point, base_timestamp: u32) -> SeekFrom {
+    pub fn calculate_seek(&self, point: &Point, base_timestamp: u64) -> SeekFrom {
         if base_timestamp == 0 {
             return SeekFrom::Start(0);
         } else {
@@ -48,7 +48,7 @@ impl ArchiveInfo {
         }
     }
 
-    pub fn interval_ceiling(&self, point: &Point) -> u32 {
-        point.timestamp - (point.timestamp % self.seconds_per_point as u32)
+    pub fn interval_ceiling(&self, point: &Point) -> u64 {
+        point.timestamp - (point.timestamp % self.seconds_per_point)
     }
 }
