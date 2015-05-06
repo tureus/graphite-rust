@@ -3,13 +3,15 @@ use byteorder::{ BigEndian, ReadBytesExt, ByteOrder };
 
 use whisper::point::{Point, POINT_SIZE};
 
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq,Debug,Copy,Clone)]
 pub struct ArchiveInfo {
     pub offset: u64,
     pub seconds_per_point: u64,
     pub points: u64,
     pub retention: u64,
-    size_in_bytes: u64
+
+    // TODO: made public so I can use it in tests
+    pub size_in_bytes: u64
 }
 
 pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {

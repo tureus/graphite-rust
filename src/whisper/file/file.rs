@@ -4,16 +4,17 @@ use std::io::{BufWriter, SeekFrom, Cursor, Seek, Read};
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt, ReadBytesExt};
 use std::path::Path;
 use std::fmt;
+use std::cell::RefCell;
 
 use super::header::{ Header, read_header };
-use super::write_op::{ WriteOp };
+use super::write_op::WriteOp;
+use super::archive_info::ArchiveInfo;
 
-use super::archive_info::{ ArchiveInfo };
 use whisper::point;
 
 pub struct WhisperFile<'a> {
     pub path: &'a str,
-    pub handle: File,
+    pub handle: RefCell<File>,
     pub header: Header
 }
 
@@ -31,7 +32,7 @@ pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
     match file_handle {
         Ok(f) => {
             let header = try!(read_header(&f));
-            let whisper_file = WhisperFile { path: path, header: header, handle: f };
+            let whisper_file = WhisperFile { path: path, header: header, handle: RefCell::new(f) };
             Ok( whisper_file )
         },
         Err(_) => {
@@ -41,10 +42,6 @@ pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
 }
 
 impl<'a> WhisperFile<'a> {
-    // The header information is not thread safe,
-    // other processes may open the file and modify the contents
-    // which would be bad. It's your job, the caller, to make sure
-    // the system can't do that.
     pub fn write(&mut self, current_time: u64, point: point::Point) -> Vec<WriteOp>{ 
         let pair = {
             self.split_archives(current_time, point.timestamp)
@@ -53,14 +50,42 @@ impl<'a> WhisperFile<'a> {
         match pair {
             Some( (high_precision_archive, rest) ) => {
                 let base_point = {
-                    let f = &mut self.handle;
-                    read_point(f, high_precision_archive.offset)
+                    self.read_point(high_precision_archive.offset)
                 };
                 let base_timestamp = base_point.timestamp;
                 self.calculate_write_ops( (high_precision_archive, rest) , point, base_timestamp)
             },
             None => {
                 panic!("no archives satisfy current time")
+            }
+        }
+    }
+
+    fn read_point(&self, offset: u64) -> point::Point {
+        let mut file = self.handle.borrow_mut();
+        let seek = file.seek(SeekFrom::Start(offset));
+
+        match seek {
+            Ok(_) => {
+                let mut points_buf : [u8; 12] = [0; 12];
+                let mut buf_ref : &mut [u8] = &mut points_buf;
+                let read = file.read(buf_ref);
+
+                match read {
+                    Ok(_) => {
+                        let mut cursor = Cursor::new(buf_ref);
+                        let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
+                        let value = cursor.read_f64::<BigEndian>().unwrap();
+
+                        point::Point{ timestamp: timestamp, value: value }
+                    },
+                    Err(err) => {
+                        panic!("read point {:?}", err)
+                    }
+                }
+            },
+            Err(err) => {
+                panic!("read_point {:?}", err)
             }
         }
     }
@@ -98,34 +123,6 @@ impl<'a> WhisperFile<'a> {
     }
 }
 
-fn read_point(file: &mut File, offset: u64) -> point::Point {
-    let seek = file.seek(SeekFrom::Start(offset));
-
-    match seek {
-        Ok(_) => {
-            let mut points_buf : [u8; 12] = [0; 12];
-            let mut buf_ref : &mut [u8] = &mut points_buf;
-            let read = file.read(buf_ref);
-
-            match read {
-                Ok(_) => {
-                    let mut cursor = Cursor::new(buf_ref);
-                    let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
-                    let value = cursor.read_f64::<BigEndian>().unwrap();
-
-                    point::Point{ timestamp: timestamp, value: value }
-                },
-                Err(err) => {
-                    panic!("read point {:?}", err)
-                }
-            }
-        },
-        Err(err) => {
-            panic!("read_point {:?}", err)
-        }
-    }
-}
-
 fn build_write_op(archive_info: &ArchiveInfo, point: point::Point, base_timestamp: u64) -> WriteOp {
     let mut output_data = [0; 12];
     let interval_ceiling = archive_info.interval_ceiling(&point);
@@ -149,8 +146,27 @@ fn build_write_op(archive_info: &ArchiveInfo, point: point::Point, base_timestam
 
 #[test]
 fn has_write_ops(){
+    use super::metadata::{Metadata, AggregationType};
+    use std::io::SeekFrom;
+
+    let path = "test/fixtures/60-1440.wsp";
+    let high_res_archive = ArchiveInfo {
+        offset: 28,
+        seconds_per_point: 60,
+        points: 1440,
+        retention: 60 * 1440,
+        size_in_bytes: 1440*12
+    };
+    let low_res_archive = ArchiveInfo {
+        offset: 56,
+        seconds_per_point: 60,
+        points: 1440,
+        retention: 60 * 1440,
+        size_in_bytes: 1440*12
+    };
     let whisper_file = WhisperFile{
-        path: "/a/nonsense/path",
+        path: path,
+        handle: RefCell::new(File::open(path).unwrap()),
         header: Header {
             metadata: Metadata {
                 aggregation_type: AggregationType::Average,
@@ -159,31 +175,22 @@ fn has_write_ops(){
                 archive_count: 1
             },
             archive_infos: vec![
-                ArchiveInfo {
-                    offset: 28,
-                    seconds_per_point: 60,
-                    points: 1440,
-                    retention: 60 * 1440
-                },
-                ArchiveInfo {
-                    offset: 56,
-                    seconds_per_point: 60,
-                    points: 1440,
-                    retention: 60 * 1440
-                }
+                high_res_archive,
+                low_res_archive
             ]
         }
     };
 
-    let fixture_time = 20;
+    let base_timestamp = 10;
     let write_ops = whisper_file.calculate_write_ops(
-        fixture_time,
-        point::Point{value: 0.0, timestamp: 10}
+        (&high_res_archive, vec![&low_res_archive]),
+        point::Point{value: 0.0, timestamp: 10},
+        base_timestamp
     );
 
     let expected = vec![
-        WriteOp{offset: 28, value: 0.0},
-        WriteOp{offset: 56, value: 0.0}
+        WriteOp{seek: SeekFrom::Start(28), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]},
+        // WriteOp{seek: SeekFrom::Start(56), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]}
     ];
     assert_eq!(write_ops, expected);
 
