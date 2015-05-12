@@ -16,7 +16,7 @@ pub fn main(){
 }
 
 pub fn write_test_point(point: whisper::point::Point){
-    let path = "./test/fixtures/60-1440.wsp";
+    let path = "./test/fixtures/60-1440-1440-168-10080-52.wsp";
     let open_result = whisper::file::open(path);
 
     match open_result {

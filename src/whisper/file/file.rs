@@ -90,14 +90,91 @@ impl<'a> WhisperFile<'a> {
         }
     }
 
+    pub fn calculate_write_ops(&self, (ai,rest): (&ArchiveInfo, Vec<&ArchiveInfo>), point: point::Point, base_timestamp: u64) -> Vec<WriteOp> {
+        let mut write_ops = vec![];
+
+        {
+            let write_op = build_write_op( ai, &point, base_timestamp );
+            write_ops.push( write_op );
+        }
+
+        if rest.len() > 1 {
+            println!("len: {:?}", rest.len());
+            let low_rest_iter = rest[0..rest.len()-1].into_iter();
+            let high_rest_iter = rest[1..].into_iter();
+            let retval : Vec<()> = low_rest_iter.zip(high_rest_iter).map(|(l,r)|
+                self.downsample(*l, *r, base_timestamp)
+            ).collect();
+
+        }
+
+
+        write_ops
+    }
+
+    // The most expensive IO functionality
+    // Reads many samples from high-res archive and
+    // aggregates to lower-res archive. Schemas could do well to avoid
+    // aggregation unless disk space is truly at a premium.
+    //
+    // A read-through cache would do well here. `memmap` would be awesomesauce.
+    fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64){
+        let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
+
+        let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
+        let h_res_start_offset = if h_base_timestamp == 0 {
+            h_res_archive.offset
+        } else {
+            let timespan  = l_interval_start - h_base_timestamp;
+            let points = timespan / h_res_archive.seconds_per_point;
+            let bytes = points / point::POINT_SIZE as u64;
+            let wrapped_index = bytes % h_res_archive.size_in_bytes;
+            h_res_archive.offset + wrapped_index
+        };
+
+        let h_res_bytes_needed = {
+            let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+            h_res_points_needed * point::POINT_SIZE as u64
+        };
+
+        let h_res_end_offset = {
+            let rel_first_offset = h_res_start_offset - h_res_archive.offset;
+            let rel_second_offset = (rel_first_offset + h_res_bytes_needed) % h_res_archive.size_in_bytes;
+            h_res_archive.offset + rel_second_offset
+        };
+
+        // TODO: Allocate vector so we can borrow its array for our data
+        let h_res_read_buf : Vec<u8> = Vec::with_capacity(h_res_bytes_needed as usize);
+
+        if h_res_start_offset < h_res_end_offset {
+            // No wrap situation
+            let seek = SeekFrom::Start(h_res_start_offset);
+            let seek_bytes = h_res_end_offset - h_res_start_offset;
+
+            // TODO read those bytes
+            // let buf = h_res_read_buf[0..]
+            // self.handle.read(buf)
+
+            println!("s: {:?}, sb: {:?}", seek, seek_bytes)
+        } else {
+            let first_seek = SeekFrom::Start(h_res_start_offset);
+            let first_seek_bytes = h_res_end_offset - h_res_start_offset;
+
+            let second_seek = SeekFrom::Start(h_res_end_offset);
+            let second_seek_bytes = h_res_end_offset - h_res_archive.offset;
+
+            println!("fs: {:?}, fsb: {:?}, ss: {:?}, ssb: {:?}", first_seek, first_seek_bytes, second_seek, second_seek_bytes)
+        }
+    }
+
     fn split_archives(&self, current_time: u64, point_timestamp: u64) -> Option<(&ArchiveInfo, Vec<&ArchiveInfo>)>  {
         let mut archive_iter = self.header.archive_infos.iter();
         
-        let hp_ai_option = archive_iter.find(|ai|
-            (current_time - point_timestamp) < ai.retention
+        let high_precision_archive_option = archive_iter.find(|ai|
+            ai.retention > (current_time - point_timestamp)
         );
 
-        match hp_ai_option {
+        match high_precision_archive_option {
             Some(ai) => {
                 let rest_of_archives = archive_iter;
                 let low_res_archives : Vec<&ArchiveInfo> = rest_of_archives.collect();
@@ -109,23 +186,11 @@ impl<'a> WhisperFile<'a> {
             }
         }
     }
-
-    pub fn calculate_write_ops(&self, (ai,_): (&ArchiveInfo, Vec<&ArchiveInfo>), point: point::Point, base_timestamp: u64) -> Vec<WriteOp> {
-        let mut write_ops = vec![];
-
-        {
-            let write_op = build_write_op( ai, point, base_timestamp );
-            write_ops.push( write_op );
-        }
-
-
-        write_ops
-    }
 }
 
-fn build_write_op(archive_info: &ArchiveInfo, point: point::Point, base_timestamp: u64) -> WriteOp {
+fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timestamp: u64) -> WriteOp {
     let mut output_data = [0; 12];
-    let interval_ceiling = archive_info.interval_ceiling(&point);
+    let interval_ceiling = archive_info.interval_ceiling(point.timestamp);
 
     let point_value = point.value;
     {
@@ -182,15 +247,16 @@ fn has_write_ops(){
     };
 
     let base_timestamp = 10;
+    let split_archives = (&high_res_archive, vec![&low_res_archive]);
     let write_ops = whisper_file.calculate_write_ops(
-        (&high_res_archive, vec![&low_res_archive]),
+        split_archives,
         point::Point{value: 0.0, timestamp: 10},
         base_timestamp
     );
 
     let expected = vec![
         WriteOp{seek: SeekFrom::Start(28), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]},
-        // WriteOp{seek: SeekFrom::Start(56), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]}
+        WriteOp{seek: SeekFrom::Start(56), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]}
     ];
     assert_eq!(write_ops, expected);
 

@@ -3,6 +3,7 @@ use byteorder::{ BigEndian, ReadBytesExt, ByteOrder };
 
 use whisper::point::{Point, POINT_SIZE};
 
+//Don't think we need Copy/Clone. Just added it to make tests easier to write.
 #[derive(PartialEq,Debug,Copy,Clone)]
 pub struct ArchiveInfo {
     pub offset: u64,
@@ -50,7 +51,7 @@ impl ArchiveInfo {
         }
     }
 
-    pub fn interval_ceiling(&self, point: &Point) -> u64 {
-        point.timestamp - (point.timestamp % self.seconds_per_point)
+    pub fn interval_ceiling(&self, sample_timestamp: u64) -> u64 {
+        sample_timestamp - (sample_timestamp % self.seconds_per_point)
     }
 }
