@@ -1,6 +1,6 @@
 // use std::io::Error;
 use std::fs::File;
-use std::io::{BufWriter, SeekFrom, Cursor, Seek, Read};
+use std::io::{BufWriter, SeekFrom, Cursor, Seek, Read, Write};
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt, ReadBytesExt};
 use std::path::Path;
 use std::fmt;
@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use super::header::{ Header, read_header };
 use super::write_op::WriteOp;
 use super::archive_info::ArchiveInfo;
+use super::metadata::{AggregationType};
 
 use whisper::point;
 
@@ -61,6 +62,19 @@ impl<'a> WhisperFile<'a> {
         }
     }
 
+    pub fn perform_write_op(&self, write_op: &WriteOp) {
+        let mut handle = self.handle.borrow_mut();
+        handle.seek(write_op.seek).unwrap();
+        handle.write(&(write_op.bytes)).unwrap();
+    }
+
+    fn buf_to_point(&self, buf: &[u8]) -> point::Point{
+        let mut cursor = Cursor::new(buf);
+        let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
+        let value = cursor.read_f64::<BigEndian>().unwrap();
+        point::Point{ timestamp: timestamp, value: value }
+    }
+
     fn read_point(&self, offset: u64) -> point::Point {
         let mut file = self.handle.borrow_mut();
         let seek = file.seek(SeekFrom::Start(offset));
@@ -72,13 +86,7 @@ impl<'a> WhisperFile<'a> {
                 let read = file.read(buf_ref);
 
                 match read {
-                    Ok(_) => {
-                        let mut cursor = Cursor::new(buf_ref);
-                        let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
-                        let value = cursor.read_f64::<BigEndian>().unwrap();
-
-                        point::Point{ timestamp: timestamp, value: value }
-                    },
+                    Ok(_) => self.buf_to_point(buf_ref),
                     Err(err) => {
                         panic!("read point {:?}", err)
                     }
@@ -103,9 +111,10 @@ impl<'a> WhisperFile<'a> {
             let low_rest_iter = rest[0..rest.len()-1].into_iter();
             let high_rest_iter = rest[1..].into_iter();
             let _ : Vec<()> = low_rest_iter.zip(high_rest_iter).map(|(l,r)|
-                self.downsample(*l, *r, base_timestamp)
+                // WriteOps must be evaluated every time
+                // because it reads the high res archive as it traverses down
+                self.perform_write_op(&self.downsample(*l, *r, base_timestamp))
             ).collect();
-
         }
 
 
@@ -118,7 +127,7 @@ impl<'a> WhisperFile<'a> {
     // aggregation unless disk space is truly at a premium.
     //
     // A read-through cache would do well here. `memmap` would be awesomesauce.
-    fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64){       
+    fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64) -> WriteOp {
         let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
 
         let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
@@ -132,10 +141,8 @@ impl<'a> WhisperFile<'a> {
             h_res_archive.offset + wrapped_index
         };
 
-        let h_res_bytes_needed = {
-            let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
-            h_res_points_needed * point::POINT_SIZE as u64
-        };
+        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+        let h_res_bytes_needed = h_res_points_needed * point::POINT_SIZE as u64;
 
         let h_res_end_offset = {
             let rel_first_offset = h_res_start_offset - h_res_archive.offset;
@@ -145,37 +152,66 @@ impl<'a> WhisperFile<'a> {
 
         let mut handle = self.handle.borrow_mut();
         let mut h_res_read_buf : Vec<u8> = Vec::with_capacity(h_res_bytes_needed as usize);
-        for _ in 0..h_res_bytes_needed {
-            h_res_read_buf.push(0);
+
+        // Subroutine for filling in the buffer
+        {
+            // TODO: must be a better way of zeroing out a buffer to fill in the vector
+            for _ in 0..h_res_bytes_needed {
+                h_res_read_buf.push(0);
+            }
+
+            if h_res_start_offset < h_res_end_offset {
+                // No wrap situation
+                let seek = SeekFrom::Start(h_res_start_offset);
+                let seek_bytes = h_res_end_offset - h_res_start_offset;
+
+                let mut read_buf : &mut [u8] = &mut h_res_read_buf[..];
+                handle.seek(seek).unwrap();
+                handle.read(read_buf).unwrap();
+
+                println!("s: {:?}, sb: {:?}, rb: {:?}", seek, seek_bytes, read_buf)
+            } else {
+                let first_seek = SeekFrom::Start(h_res_start_offset);
+                let first_seek_bytes = h_res_end_offset - h_res_start_offset;
+
+                let (first_buf, second_buf) = h_res_read_buf.split_at_mut(first_seek_bytes as usize);
+
+                handle.seek(first_seek).unwrap();
+                handle.read(first_buf).unwrap();
+
+                let second_seek = SeekFrom::Start(h_res_end_offset);
+                let second_seek_bytes = h_res_end_offset - h_res_archive.offset;
+                handle.seek(second_seek).unwrap();
+                handle.read(second_buf).unwrap();
+
+                println!("fs: {:?}, fsb: {:?}, ss: {:?}, ssb: {:?}", first_seek, first_seek_bytes, second_seek, second_seek_bytes);
+            }
         }
 
+        let low_res_aggregate = {
+            let points : Vec<point::Point> = h_res_read_buf.chunks(point::POINT_SIZE).map(|chunk|
+                self.buf_to_point(chunk)
+            ).collect();
+            self.aggregate_samples(points)
+        };
 
-        if h_res_start_offset < h_res_end_offset {
-            // No wrap situation
-            let seek = SeekFrom::Start(h_res_start_offset);
-            let seek_bytes = h_res_end_offset - h_res_start_offset;
+        {
+            let l_res_base_point = self.read_point(l_res_archive.offset);
+            let l_res_point = point::Point{ timestamp: l_interval_start, value: low_res_aggregate };
+            build_write_op(l_res_archive, &l_res_point, l_res_base_point.timestamp)
+        }
 
-            // TODO read those bytes
-            let mut read_buf : &mut [u8] = &mut h_res_read_buf[..];
-            handle.seek(seek).unwrap();
-            handle.read(read_buf).unwrap();
+    }
 
-            println!("s: {:?}, sb: {:?}, rb: {:?}", seek, seek_bytes, read_buf)
-        } else {
-            let first_seek = SeekFrom::Start(h_res_start_offset);
-            let first_seek_bytes = h_res_end_offset - h_res_start_offset;
-
-            let (first_buf, second_buf) = h_res_read_buf.split_at_mut(first_seek_bytes as usize);
-
-            handle.seek(first_seek).unwrap();
-            handle.read(first_buf).unwrap();
-
-            let second_seek = SeekFrom::Start(h_res_end_offset);
-            let second_seek_bytes = h_res_end_offset - h_res_archive.offset;
-            handle.seek(second_seek).unwrap();
-            handle.read(second_buf).unwrap();
-
-            println!("fs: {:?}, fsb: {:?}, ss: {:?}, ssb: {:?}", first_seek, first_seek_bytes, second_seek, second_seek_bytes)
+    fn aggregate_samples(&self, points: Vec<point::Point>) -> f64{
+        // TODO: we only do aggregation right now!
+        // TODO: need to use the xff property and turn this in to a Option
+        match self.header.metadata.aggregation_type {
+            AggregationType::Average => {
+                let sum = points.iter().map(|p| p.value).fold(0.0, |l, r| l + r);
+                sum / points.len() as f64
+            },
+            _ => { 0.0 }
         }
     }
 
@@ -223,8 +259,8 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
 
 #[test]
 fn has_write_ops(){
-    use super::metadata::{Metadata, AggregationType};
     use std::io::SeekFrom;
+    use super::metadata::Metadata;
 
     let path = "test/fixtures/60-1440.wsp";
     let high_res_archive = ArchiveInfo {
