@@ -2,7 +2,7 @@
 use std::fs::File;
 use std::io::{BufWriter, SeekFrom, Cursor, Seek, Read, Write};
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt, ReadBytesExt};
-use std::path::Path;
+use std::fs::OpenOptions;
 use std::fmt;
 use std::cell::RefCell;
 
@@ -28,7 +28,7 @@ impl<'a> fmt::Debug for WhisperFile<'a> {
 // TODO: Change error value to generic Error
 pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
     debug!("opening file");
-    let file_handle = File::open(Path::new(path));
+    let file_handle = OpenOptions::new().read(true).write(true).create(false).open(path);
 
     match file_handle {
         Ok(f) => {
@@ -65,7 +65,7 @@ impl<'a> WhisperFile<'a> {
     pub fn perform_write_op(&self, write_op: &WriteOp) {
         let mut handle = self.handle.borrow_mut();
         handle.seek(write_op.seek).unwrap();
-        handle.write(&(write_op.bytes)).unwrap();
+        handle.write_all(&(write_op.bytes)).unwrap();
     }
 
     fn buf_to_point(&self, buf: &[u8]) -> point::Point{
@@ -107,7 +107,6 @@ impl<'a> WhisperFile<'a> {
         }
 
         if rest.len() > 1 {
-            println!("len: {:?}", rest.len());
             let low_rest_iter = rest[0..rest.len()-1].into_iter();
             let high_rest_iter = rest[1..].into_iter();
             let _ : Vec<()> = low_rest_iter.zip(high_rest_iter).map(|(l,r)|
@@ -126,7 +125,7 @@ impl<'a> WhisperFile<'a> {
     // aggregates to lower-res archive. Schemas could do well to avoid
     // aggregation unless disk space is truly at a premium.
     //
-    // A read-through cache would do well here. `memmap` would be awesomesauce.
+    // A cache for each archive would do well here. `memmap` would be awesomesauce.
     fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64) -> WriteOp {
         let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
 
@@ -150,26 +149,25 @@ impl<'a> WhisperFile<'a> {
             h_res_archive.offset + rel_second_offset
         };
 
-        let mut handle = self.handle.borrow_mut();
         let mut h_res_read_buf : Vec<u8> = Vec::with_capacity(h_res_bytes_needed as usize);
 
         // Subroutine for filling in the buffer
         {
+            let mut handle = self.handle.borrow_mut();
+
             // TODO: must be a better way of zeroing out a buffer to fill in the vector
             for _ in 0..h_res_bytes_needed {
                 h_res_read_buf.push(0);
             }
 
+
             if h_res_start_offset < h_res_end_offset {
                 // No wrap situation
                 let seek = SeekFrom::Start(h_res_start_offset);
-                let seek_bytes = h_res_end_offset - h_res_start_offset;
 
                 let mut read_buf : &mut [u8] = &mut h_res_read_buf[..];
                 handle.seek(seek).unwrap();
                 handle.read(read_buf).unwrap();
-
-                println!("s: {:?}, sb: {:?}, rb: {:?}", seek, seek_bytes, read_buf)
             } else {
                 let first_seek = SeekFrom::Start(h_res_start_offset);
                 let first_seek_bytes = h_res_end_offset - h_res_start_offset;
@@ -180,11 +178,8 @@ impl<'a> WhisperFile<'a> {
                 handle.read(first_buf).unwrap();
 
                 let second_seek = SeekFrom::Start(h_res_end_offset);
-                let second_seek_bytes = h_res_end_offset - h_res_archive.offset;
                 handle.seek(second_seek).unwrap();
                 handle.read(second_buf).unwrap();
-
-                println!("fs: {:?}, fsb: {:?}, ss: {:?}, ssb: {:?}", first_seek, first_seek_bytes, second_seek, second_seek_bytes);
             }
         }
 
@@ -304,7 +299,6 @@ fn has_write_ops(){
 
     let expected = vec![
         WriteOp{seek: SeekFrom::Start(28), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]},
-        // WriteOp{seek: SeekFrom::Start(56), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]}
     ];
     assert_eq!(write_ops.len(), expected.len());
     assert_eq!(write_ops, expected);
