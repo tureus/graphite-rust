@@ -1,7 +1,6 @@
 // use std::io::Error;
 use std::fs::File;
-use std::io::{BufWriter, SeekFrom, Cursor, Seek, Read, Write};
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt, ReadBytesExt};
+use std::io::{SeekFrom, Seek, Read, Write};
 use std::fs::OpenOptions;
 use std::fmt;
 use std::cell::RefCell;
@@ -43,6 +42,7 @@ pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
 }
 
 impl<'a> WhisperFile<'a> {
+    // TODO: Result<usize> return how many write ops were done
     pub fn write(&mut self, current_time: u64, point: point::Point) -> Vec<WriteOp>{ 
         let pair = {
             self.split_archives(current_time, point.timestamp)
@@ -74,13 +74,6 @@ impl<'a> WhisperFile<'a> {
         handle.write_all(&(write_op.bytes)).unwrap();
     }
 
-    fn buf_to_point(&self, buf: &[u8]) -> point::Point{
-        let mut cursor = Cursor::new(buf);
-        let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
-        let value = cursor.read_f64::<BigEndian>().unwrap();
-        point::Point{ timestamp: timestamp, value: value }
-    }
-
     fn read_point(&self, offset: u64) -> point::Point {
         let mut file = self.handle.borrow_mut();
         let seek = file.seek(SeekFrom::Start(offset));
@@ -92,7 +85,7 @@ impl<'a> WhisperFile<'a> {
                 let read = file.read(buf_ref);
 
                 match read {
-                    Ok(_) => self.buf_to_point(buf_ref),
+                    Ok(_) => point::buf_to_point(buf_ref),
                     Err(err) => {
                         panic!("read point {:?}", err)
                     }
@@ -191,7 +184,7 @@ impl<'a> WhisperFile<'a> {
 
         let low_res_aggregate = {
             let points : Vec<point::Point> = h_res_read_buf.chunks(point::POINT_SIZE).map(|chunk|
-                self.buf_to_point(chunk)
+                point::buf_to_point(chunk)
             ).collect();
             self.aggregate_samples(points)
         };
@@ -241,12 +234,10 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
     let mut output_data = [0; 12];
     let interval_ceiling = archive_info.interval_ceiling(point.timestamp);
 
-    let point_value = point.value;
     {
+        let point_value = point.value;
         let buf : &mut [u8] = &mut output_data;
-        let mut writer = BufWriter::new(buf);
-        writer.write_u32::<BigEndian>(interval_ceiling as u32).unwrap();
-        writer.write_f64::<BigEndian>(point_value).unwrap();
+        point::fill_buf(buf, interval_ceiling, point_value);
     }
 
     let seek_info = archive_info.calculate_seek(&point,  base_timestamp);
