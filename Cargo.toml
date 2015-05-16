@@ -8,7 +8,7 @@ name="graphite"
 path="src/lib.rs"
 
 [[bin]]
-name="carbon"
+name="whisper"
 
 [dependencies]
 byteorder = "*"
@@ -16,6 +16,8 @@ gcc = "*"
 time = "*"
 log = "*"
 env_logger = "*"
+rustc-serialize = "0.3.14"
+docopt = "0.6.64"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]

@@ -54,7 +54,13 @@ impl<'a> WhisperFile<'a> {
                     self.read_point(high_precision_archive.offset)
                 };
                 let base_timestamp = base_point.timestamp;
-                self.calculate_write_ops( (high_precision_archive, rest) , point, base_timestamp)
+                let ops = self.calculate_write_ops(
+                    (high_precision_archive, rest),
+                    point,
+                    base_timestamp
+                );
+                let _ : Vec<()> = ops.iter().map(|op| self.perform_write_op(op) ).collect();
+                ops
             },
             None => {
                 panic!("no archives satisfy current time")
