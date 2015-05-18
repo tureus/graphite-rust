@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{SeekFrom, Seek, Read, Write};
 use std::fs::OpenOptions;
 use std::fmt;
+use num::iter::range_step_inclusive;
 use std::cell::RefCell;
 
 use super::header::{ Header, read_header };
@@ -26,7 +27,6 @@ impl<'a> fmt::Debug for WhisperFile<'a> {
 
 // TODO: Change error value to generic Error
 pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
-    debug!("opening file");
     let file_handle = OpenOptions::new().read(true).write(true).create(false).open(path);
 
     match file_handle {
@@ -43,7 +43,7 @@ pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
 
 impl<'a> WhisperFile<'a> {
     // TODO: Result<usize> return how many write ops were done
-    pub fn write(&mut self, current_time: u64, point: point::Point) -> Vec<WriteOp>{ 
+    pub fn write(&mut self, current_time: u64, point: point::Point) {
         let pair = {
             self.split_archives(current_time, point.timestamp)
         };
@@ -54,13 +54,11 @@ impl<'a> WhisperFile<'a> {
                     self.read_point(high_precision_archive.offset)
                 };
                 let base_timestamp = base_point.timestamp;
-                let ops = self.calculate_write_ops(
+                self.calculate_write_ops(
                     (high_precision_archive, rest),
                     point,
                     base_timestamp
                 );
-                let _ : Vec<()> = ops.iter().map(|op| self.perform_write_op(op) ).collect();
-                ops
             },
             None => {
                 panic!("no archives satisfy current time")
@@ -69,6 +67,7 @@ impl<'a> WhisperFile<'a> {
     }
 
     pub fn perform_write_op(&self, write_op: &WriteOp) {
+        debug!("writing to pos {:?} of {}", write_op.seek, self.path);
         let mut handle = self.handle.borrow_mut();
         handle.seek(write_op.seek).unwrap();
         handle.write_all(&(write_op.bytes)).unwrap();
@@ -97,26 +96,41 @@ impl<'a> WhisperFile<'a> {
         }
     }
 
-    pub fn calculate_write_ops(&self, (ai,rest): (&ArchiveInfo, Vec<&ArchiveInfo>), point: point::Point, base_timestamp: u64) -> Vec<WriteOp> {
-        let mut write_ops = vec![];
-
+    pub fn calculate_write_ops(&self, (ai,rest): (&ArchiveInfo, Vec<&ArchiveInfo>), point: point::Point, base_timestamp: u64) {
         {
             let write_op = build_write_op( ai, &point, base_timestamp );
-            write_ops.push( write_op );
+            self.perform_write_op(&write_op);
         }
 
         if rest.len() > 1 {
-            let low_rest_iter = rest[0..rest.len()-1].into_iter();
-            let high_rest_iter = rest[1..].into_iter();
-            let _ : Vec<()> = low_rest_iter.zip(high_rest_iter).map(|(l,r)|
-                // WriteOps must be evaluated every time
-                // because it reads the high res archive as it traverses down
-                self.perform_write_op(&self.downsample(*l, *r, base_timestamp))
-            ).collect();
+            // debug!("downsampling first pair");
+            self.downsample(ai, rest[0], point.timestamp).map(|write_op| self.perform_write_op(&write_op) );
+
+            // debug!("downsampling all others");
+            let high_res_iter = rest[0..rest.len()-1].into_iter();
+            let low_res_iter = rest[1..].into_iter();
+            let res : Vec<()> = high_res_iter.
+                zip(low_res_iter).
+                // map(|(h,l)| {
+                //     self.downsample(*h, *l, point.timestamp)
+                // }).
+                take_while(|&pair| {
+                    let (h,l) = pair;
+                    // println!("h: {:?}, l: {:?}", h, l);
+                    // true
+                    let op = self.downsample(h, l, point.timestamp);
+                    match op {
+                        Some(write_op) => {
+                            self.perform_write_op(&write_op);
+                            true
+                        },
+                        None => false
+                    }
+                }).
+                map(|_| ()).
+                collect();
+            debug!("res: {:?}", res);
         }
-
-
-        write_ops
     }
 
     // The most expensive IO functionality
@@ -125,20 +139,25 @@ impl<'a> WhisperFile<'a> {
     // aggregation unless disk space is truly at a premium.
     //
     // A cache for each archive would do well here. `memmap` would be awesomesauce.
-    fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64) -> WriteOp {
+    fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64) -> Option<WriteOp> {
+        assert!(h_res_archive.seconds_per_point < l_res_archive.seconds_per_point);
+
         let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
+        // debug!("base_timestamp: {}, l_interval_start: {}", base_timestamp, l_interval_start);
 
         let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
         let h_res_start_offset = if h_base_timestamp == 0 {
             h_res_archive.offset
         } else {
-            let timespan  = l_interval_start - h_base_timestamp;
+            // TODO: this can be negative. Does that change timestamp understanding?
+            let timespan  = (l_interval_start as i64 - h_base_timestamp as i64).abs() as u64;
             let points = timespan / h_res_archive.seconds_per_point;
             let bytes = points / point::POINT_SIZE as u64;
             let wrapped_index = bytes % h_res_archive.size_in_bytes;
             h_res_archive.offset + wrapped_index
         };
 
+        // debug!("l_res_archive.seconds_per_point: {}, h_res_archive.seconds_per_point: {}", l_res_archive.seconds_per_point, h_res_archive.seconds_per_point);
         let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
         let h_res_bytes_needed = h_res_points_needed * point::POINT_SIZE as u64;
 
@@ -148,6 +167,7 @@ impl<'a> WhisperFile<'a> {
             h_res_archive.offset + rel_second_offset
         };
 
+        // debug!("h_res_points_needed: {}, bytes needed: {}", h_res_points_needed, h_res_bytes_needed);
         let mut h_res_read_buf : Vec<u8> = Vec::with_capacity(h_res_bytes_needed as usize);
 
         // Subroutine for filling in the buffer
@@ -180,32 +200,62 @@ impl<'a> WhisperFile<'a> {
                 handle.seek(second_seek).unwrap();
                 handle.read(second_buf).unwrap();
             }
+
         }
 
         let low_res_aggregate = {
-            let points : Vec<point::Point> = h_res_read_buf.chunks(point::POINT_SIZE).map(|chunk|
+            // debug!("chunks expected: {}", h_res_read_buf.len() as f32 / point::POINT_SIZE as f32);
+            let points : Vec<point::Point> = h_res_read_buf.chunks(point::POINT_SIZE).map(|chunk| {
+                // debug!("chunk: {:?}", chunk);
                 point::buf_to_point(chunk)
-            ).collect();
-            self.aggregate_samples(points)
+            }).collect();
+
+            let timestamp_start = l_interval_start;
+            let timestamp_stop = l_interval_start + (h_res_points_needed as u64)*h_res_archive.seconds_per_point;
+            let step = h_res_archive.seconds_per_point;
+
+            let expected_timestamps = range_step_inclusive(timestamp_start, timestamp_stop, step);
+            let valid_points : Vec<Option<&point::Point>> = expected_timestamps.
+                zip(points.iter()).
+                map(|(ts, p)| {
+                    debug!("comparing {} and {:?}", ts, p);
+                    if p.timestamp == ts {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                }).collect();
+
+            debug!("expected timestamps: {:?}", valid_points);
+            // self.aggregate_samples(points)
+            None
         };
 
-        {
+        low_res_aggregate.map(|aggregate| {
             let l_res_base_point = self.read_point(l_res_archive.offset);
-            let l_res_point = point::Point{ timestamp: l_interval_start, value: low_res_aggregate };
+            let l_res_point = point::Point{ timestamp: l_interval_start, value: aggregate };
             build_write_op(l_res_archive, &l_res_point, l_res_base_point.timestamp)
-        }
-
+        })
     }
 
-    fn aggregate_samples(&self, points: Vec<point::Point>) -> f64{
+    fn aggregate_samples(&self, points: Vec<point::Point>) -> Option<f64>{
+        debug!("points: {:?}", points);
+        let valid_points : Vec<&point::Point> = points.iter().filter(|p| p.timestamp != 0).map(|p| p).collect();
+
+        let ratio : f32 = valid_points.len() as f32 / points.len() as f32;
+        debug!("valid_points: {}, len: {}, ratio {} vs xff {}", valid_points.len(), points.len(), ratio, self.header.metadata.x_files_factor);
+        if ratio < self.header.metadata.x_files_factor {
+            debug!("not aggregating samples");
+            return None;
+        }
+
         // TODO: we only do aggregation right now!
-        // TODO: need to use the xff property and turn this in to a Option
         match self.header.metadata.aggregation_type {
             AggregationType::Average => {
                 let sum = points.iter().map(|p| p.value).fold(0.0, |l, r| l + r);
-                sum / points.len() as f64
+                Some(sum / points.len() as f64)
             },
-            _ => { 0.0 }
+            _ => { Some(0.0) }
         }
     }
 
@@ -233,6 +283,7 @@ impl<'a> WhisperFile<'a> {
 fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timestamp: u64) -> WriteOp {
     let mut output_data = [0; 12];
     let interval_ceiling = archive_info.interval_ceiling(point.timestamp);
+    // debug!("interval_ceiling: {}", interval_ceiling);
 
     {
         let point_value = point.value;

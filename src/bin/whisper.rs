@@ -50,6 +50,7 @@ pub fn main(){
             timestamp: args.arg_timestamp.parse::<u64>().unwrap(),
             value: args.arg_value.parse::<f64>().unwrap()
         };
+        debug!("Updating TS: {} with value: {}", point.timestamp, point.value);
 
         file.write(current_time, point);
     } else if args.cmd_mark {

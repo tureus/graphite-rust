@@ -40,4 +40,6 @@ extern crate byteorder;
 extern crate log;
 extern crate env_logger;
 
+extern crate num;
+
 pub mod whisper;

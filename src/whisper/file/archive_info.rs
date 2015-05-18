@@ -36,7 +36,7 @@ pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
 impl ArchiveInfo {
     pub fn calculate_seek(&self, point: &Point, base_timestamp: u64) -> SeekFrom {
         if base_timestamp == 0 {
-            return SeekFrom::Start(0);
+            return SeekFrom::Start(self.offset);
         } else {
 
             let file_offset = {
@@ -51,7 +51,9 @@ impl ArchiveInfo {
         }
     }
 
-    pub fn interval_ceiling(&self, sample_timestamp: u64) -> u64 {
-        sample_timestamp - (sample_timestamp % self.seconds_per_point)
+    pub fn interval_ceiling(&self, timestamp: u64) -> u64 {
+        let retval = timestamp - (timestamp % self.seconds_per_point);
+        // debug!("timestamp: {}, interval: {}", timestamp, retval);
+        retval
     }
 }

@@ -15,7 +15,7 @@ pub enum AggregationType {
 pub struct Metadata {
     pub aggregation_type: AggregationType,
     pub max_retention: u32,
-    pub x_files_factor: u32,
+    pub x_files_factor: f32,
     pub archive_count: u32
 }
 
@@ -24,7 +24,7 @@ pub fn slice_to_metadata(buf: &[u8]) -> Metadata {
 
     let aggregation_type = cursor.read_u32::<BigEndian>().unwrap();
     let max_retention = cursor.read_u32::<BigEndian>().unwrap();
-    let x_files_factor = cursor.read_u32::<BigEndian>().unwrap();
+    let x_files_factor = cursor.read_f32::<BigEndian>().unwrap();
     let archive_count = cursor.read_u32::<BigEndian>().unwrap();
 
     Metadata {

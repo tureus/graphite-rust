@@ -18,6 +18,7 @@ log = "*"
 env_logger = "*"
 rustc-serialize = "0.3.14"
 docopt = "0.6.64"
+num = "*"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]

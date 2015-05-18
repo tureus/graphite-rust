@@ -10,6 +10,7 @@ pub struct Point {
 // TODO: generate this from the struct definition?
 pub const POINT_SIZE : usize = 12;
 
+#[inline]
 pub fn buf_to_point(buf: &[u8]) -> Point {
     let mut cursor = Cursor::new(buf);
     let timestamp = cursor.read_u32::<BigEndian>().unwrap() as u64;
@@ -17,6 +18,7 @@ pub fn buf_to_point(buf: &[u8]) -> Point {
     Point{ timestamp: timestamp, value: value }
 }
 
+#[inline]
 pub fn fill_buf(buf: &mut [u8], interval_ceiling: u64, point_value: f64) {
     let mut writer = BufWriter::new(buf);
     writer.write_u32::<BigEndian>(interval_ceiling as u32).unwrap();
