@@ -24,6 +24,7 @@ This crate provides the graphite ecosystem of tools.
  - [ ] TCP daemon
  - [ ] Pickle daemon
  - [ ] HTTP frontend
+ - [ ] Make logging useful for ops
 
 ## Documentation
 
