@@ -9,6 +9,22 @@ This crate provides the graphite ecosystem of tools.
   $ cargo build
   $ RUST_LOG=debug ./target/debug/carbon
 
+## Tasks
+
+ - [X] Read headers
+ - [X] Read single point
+ - [X] Write to single archive
+ - [X] Write through all archives with downsampling
+ - [ ] Create files
+ - [ ] Read many points
+ - [ ] Lock files
+ - [ ] Cache data for sampling (PROFILING)
+ - [ ] `mmap` files (PROFILING)
+ - [ ] UDP daemon
+ - [ ] TCP daemon
+ - [ ] Pickle daemon
+ - [ ] HTTP frontend
+
 ## Documentation
 
 [http://tureus.github.io/graphite-rust](http://tureus.github.io/graphite-rust)
