@@ -15,6 +15,7 @@ Usage:
     whisper info <file>
     whisper update <file> <timestamp> <value>
     whisper mark <file> <value>
+    whisper thrash <file> <value> <times>
 ";
 
 #[derive(RustcDecodable, Debug)]
@@ -26,7 +27,10 @@ struct Args {
     cmd_update: bool,
     cmd_mark: bool,
     arg_timestamp: String,
-    arg_value: String
+    arg_value: String,
+
+    cmd_thrash: bool,
+    arg_times: String
 }
 
 
@@ -39,13 +43,14 @@ pub fn main(){
     let path = unsafe {
         args.arg_file.slice_unchecked(0, args.arg_file.len())
     };
-    let mut file = whisper::file::open(path).unwrap();
 
     let current_time = time::get_time().sec as u64;
 
     if args.cmd_info {
-      println!("{:?}", file);
+        let file = whisper::file::open(path).unwrap();
+        println!("{:?}", file);
     } else if args.cmd_update {
+        let mut file = whisper::file::open(path).unwrap();
         let point = whisper::point::Point{
             timestamp: args.arg_timestamp.parse::<u64>().unwrap(),
             value: args.arg_value.parse::<f64>().unwrap()
@@ -54,11 +59,23 @@ pub fn main(){
 
         file.write(current_time, point);
     } else if args.cmd_mark {
+        let mut file = whisper::file::open(path).unwrap();
         let point = whisper::point::Point{
             timestamp: current_time,
             value: args.arg_value.parse::<f64>().unwrap()
         };
 
         file.write(current_time, point);
+    } else if args.cmd_thrash {
+        let times = args.arg_times.parse::<u64>().unwrap();
+        let mut file = whisper::file::open(path).unwrap();
+        for index in 1..times {
+            let point = whisper::point::Point{
+                timestamp: current_time+index,
+                value: args.arg_value.parse::<f64>().unwrap()
+            };
+
+            file.write(current_time+index, point);
+        }
     }
 }
