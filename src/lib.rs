@@ -42,4 +42,6 @@ extern crate env_logger;
 
 extern crate num;
 
+extern crate regex;
+
 pub mod whisper;

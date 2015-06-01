@@ -6,9 +6,9 @@ use super::file;
 
 use super::metadata;
 use super::archive_info;
+use super::archive_info::ARCHIVE_INFO_DISK_SIZE;
 
-const HEADER_SIZE: usize = 16;
-const ARCHIVE_INFO_SIZE: usize = 12;
+pub const HEADER_SIZE: usize = 16;
 
 #[derive(PartialEq,Debug)]
 pub struct Header{
@@ -32,11 +32,11 @@ pub fn read_header(mut file: &File) -> Result<Header, &'static str>{
             let mut archive_infos = vec![];
 
             for _ in 0..metadata.archive_count {
-                let archive_info_buffer = &mut[0u8; ARCHIVE_INFO_SIZE];
+                let archive_info_buffer = &mut[0u8; ARCHIVE_INFO_DISK_SIZE];
                 let archive_read_result = file.read(archive_info_buffer);
                 match archive_read_result {
                     Ok(bytes_read) => {
-                        if bytes_read != ARCHIVE_INFO_SIZE {
+                        if bytes_read != ARCHIVE_INFO_DISK_SIZE {
                             return Err("could not get enough bytes for index");
                         }
 
@@ -64,14 +64,14 @@ pub fn read_header(mut file: &File) -> Result<Header, &'static str>{
 #[test]
 fn parses_60_1440() {
     let path = "./test/fixtures/60-1440.wsp";
-    let open_result = file::open(path);
+    let f = file::open(path).unwrap();
 
     // A literal Header
     let expected = Header {
         metadata: metadata::Metadata {
             aggregation_type: metadata::AggregationType::Average,
             max_retention: 86400,
-            x_files_factor: 1056964608,
+            x_files_factor: 0.5,
             archive_count: 1
         },
         archive_infos: vec![
@@ -85,12 +85,5 @@ fn parses_60_1440() {
         ]
     };
 
-    match open_result {
-        Ok(f) => {
-            assert_eq!(f.header, expected)
-        }
-        Err(_) => {
-            assert!(false)
-        }
-    }
+    assert_eq!(f.header, expected)
 }

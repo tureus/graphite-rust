@@ -8,8 +8,9 @@ use std::cell::RefCell;
 
 use super::header::{ Header, read_header };
 use super::write_op::WriteOp;
-use super::archive_info::ArchiveInfo;
-use super::metadata::{AggregationType};
+use super::archive_info::{ ArchiveInfo };
+use super::metadata::{Metadata, AggregationType};
+use whisper::schema::Schema;
 
 use whisper::point;
 
@@ -42,6 +43,19 @@ pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
 }
 
 impl<'a> WhisperFile<'a> {
+    pub fn new(path: &str, schema: Schema, metadata: Metadata) -> WhisperFile {
+        let size_on_disk = schema.size_on_disk();
+        debug!("size_on_disk: {}", size_on_disk);
+
+        // zero-file to that size
+        // write header
+        // write metadata
+
+        // let file_handle = OpenOptions::new().read(false).write(true).create(true).open(path);
+
+        panic!("hey!")
+    }
+
     // TODO: Result<usize> return how many write ops were done
     pub fn write(&mut self, current_time: u64, point: point::Point) {
 
@@ -94,8 +108,7 @@ impl<'a> WhisperFile<'a> {
             let _ : Vec<()> = high_res_iter.
                 zip(low_res_iter).
                 take_while(|&(h,l)| {
-                    let op = self.downsample(h, l, point.timestamp);
-                    match op {
+                    match self.downsample(h, l, point.timestamp) {
                         Some(write_op) => {
                             self.perform_write_op(&write_op);
                             true
@@ -287,58 +300,4 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
         seek: seek_info,
         bytes: output_data
     }
-}
-
-#[test]
-fn has_write_ops(){
-    use std::io::SeekFrom;
-    use super::metadata::Metadata;
-
-    let path = "test/fixtures/60-1440.wsp";
-    let high_res_archive = ArchiveInfo {
-        offset: 28,
-        seconds_per_point: 60,
-        points: 1440,
-        retention: 60 * 1440,
-        size_in_bytes: 1440*12
-    };
-    let low_res_archive = ArchiveInfo {
-        offset: 56,
-        seconds_per_point: 60,
-        points: 1440,
-        retention: 60 * 1440,
-        size_in_bytes: 1440*12
-    };
-    let whisper_file = WhisperFile{
-        path: path,
-        handle: RefCell::new(File::open(path).unwrap()),
-        header: Header {
-            metadata: Metadata {
-                aggregation_type: AggregationType::Average,
-                max_retention: 86400,
-                x_files_factor: 1056964608,
-                archive_count: 1
-            },
-            archive_infos: vec![
-                high_res_archive,
-                low_res_archive
-            ]
-        }
-    };
-
-    let base_timestamp = 10;
-    let split_archives = (&high_res_archive, vec![&low_res_archive]);
-    let write_ops = whisper_file.write_archives(
-        split_archives,
-        point::Point{value: 0.0, timestamp: 10},
-        base_timestamp
-    );
-
-    let expected = vec![
-        WriteOp{seek: SeekFrom::Start(28), bytes: [0,0,0,0,0,0,0,0,0,0,0,0]},
-    ];
-    assert_eq!(write_ops.len(), expected.len());
-    assert_eq!(write_ops, expected);
-
-    return;
 }

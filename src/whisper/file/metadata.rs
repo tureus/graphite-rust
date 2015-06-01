@@ -1,6 +1,8 @@
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 
+pub const METADATA_DISK_SIZE : u64 = 16;
+
 #[derive(PartialEq,Debug)]
 pub enum AggregationType {
     Average,
