@@ -11,6 +11,7 @@ extern crate regex;
 
 use docopt::Docopt;
 use graphite::whisper;
+use graphite::whisper::schema::RetentionPolicy;
 use std::process::exit;
 
 static USAGE: &'static str = "
@@ -112,6 +113,7 @@ fn mult_str_to_num(mult_str: &str) -> u64 {
         "m" => 60,
         "h" => 60*60,
         "d" => 60*60*24,
+        "w" => 60*60*24*7,
         "y" => 60*60*24*365,
         _   => {
             // should never pass regex
@@ -121,7 +123,7 @@ fn mult_str_to_num(mult_str: &str) -> u64 {
     }
 }
 
-fn retention_spec_to_pair(regex_match: regex::Captures) -> Option<(u64,u64)> {
+fn retention_capture_to_pair(regex_match: regex::Captures) -> Option<whisper::schema::RetentionPolicy> {
     let precision_opt = regex_match.at(1);
     let precision_mult = regex_match.at(2).unwrap_or("s");
     let points_opt = regex_match.at(3);
@@ -131,34 +133,57 @@ fn retention_spec_to_pair(regex_match: regex::Captures) -> Option<(u64,u64)> {
         let precision = precision_opt.unwrap().parse::<u64>().unwrap();
         let points = points_opt.unwrap().parse::<u64>().unwrap();
 
-        Some ((
-            precision * mult_str_to_num(precision_mult),
-            points * mult_str_to_num(points_mult)
-        ))
+        let retention_spec = whisper::schema::RetentionPolicy {
+            precision: precision * mult_str_to_num(precision_mult),
+            points: points * mult_str_to_num(points_mult)
+        };
+
+        Some(retention_spec)
     } else {
         None
     }
 }
 
+fn parse_spec_to_retention_policy(spec: &str) -> Option<RetentionPolicy> {
+    // TODO: regex should be built as const using macro regex!
+    // but that's only available in nightlies.
+    let retention_matcher = regex::Regex::new({r"^(\d+)([smhdwy])?:(\d+)([smhdwy])?$"}).unwrap();
+    match retention_matcher.captures(spec) {
+        Some(regex_match) => {
+            retention_capture_to_pair(regex_match)
+        },
+        None => None
+    }
+}
+
+fn validate_retention_policies(expanded_pairs: &Vec<(&String, &Option<RetentionPolicy>)> ) {
+        let _ : Vec<()> = expanded_pairs.iter().map(|pair: &(&String, &Option<RetentionPolicy>)| {
+            let (ref string, ref opt) = *pair;
+            if opt.is_none() {
+                println!("error: {} is not a valid retention policy", string);
+                exit(1);
+            }
+        }).collect();
+}
+
 fn cmd_create(args: Args, _: &str) {
-    let specs : Vec<String> = args.arg_timespec;
-    let retention_matcher = regex::Regex::new({r"^(\d+)([smhdy])?:(\d+)([smhdy])?$"}).unwrap();
+    
+    let retention_policies : Vec<RetentionPolicy> = {
+        let specs : Vec<String> = args.arg_timespec;
 
-    let expanded_pairs : Vec<Option<(u64,u64)>> = specs.iter().map(|ts| {
-        let mut iter = retention_matcher.captures_iter(ts);
-        // Borrow check yells at me for calling `count` and `next`
-        // so I make a copy by running match twice.
-        let iter2 = retention_matcher.captures_iter(ts);
-        let count = iter2.count();
+        let expanded_pairs : Vec<Option<RetentionPolicy>> = specs.iter().map(|ts| {
+            parse_spec_to_retention_policy(ts)
+        }).collect();
 
-        if count == 1 {
-            let regex_match = iter.next().unwrap();
-            retention_spec_to_pair(regex_match)
-        } else {
-            None
+        if expanded_pairs.iter().any(|x| x.is_none()) {
+            let specs_iter = specs.iter();
+            let pairs_iter = expanded_pairs.iter();
+            let error_pairs : Vec<(&String, &Option<RetentionPolicy>)> = specs_iter.zip(pairs_iter).collect();
+            validate_retention_policies(&error_pairs);
         }
 
-    }).collect();
+        expanded_pairs.iter().filter(|x| x.is_some()).map(|x| x.unwrap()).collect()
+    };
 
-    println!("retention_policies: {:?}", expanded_pairs);
+    println!("retention_policies: {:?}", retention_policies);
 }

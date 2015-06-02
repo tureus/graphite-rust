@@ -2,6 +2,7 @@ use whisper::point::POINT_SIZE;
 
 // A RetentionPolicy is the abstract form of an ArchiveInfo
 // It does not know it's position in the file
+#[derive(Debug, Clone, Copy)]
 pub struct RetentionPolicy {
     pub precision: u64,
     pub points: u64
