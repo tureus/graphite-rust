@@ -1,21 +1,15 @@
 extern crate graphite;
 
-extern crate libc;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
 extern crate rustc_serialize;
 extern crate docopt;
 extern crate time;
-extern crate regex;
 
-use std::fs::OpenOptions;
-use std::os::unix::prelude::AsRawFd;
 use docopt::Docopt;
 use graphite::whisper;
-use graphite::whisper::schema::{ Schema, RetentionPolicy };
-use libc::funcs::posix01::unistd::ftruncate;
-use std::process::exit;
+use graphite::whisper::schema::Schema;
 
 static USAGE: &'static str = "
 Usage:
@@ -61,8 +55,7 @@ pub fn main(){
     let current_time = time::get_time().sec as u64;
 
     if args.cmd_info {
-        let file = whisper::file::open(path).unwrap();
-        println!("{:?}", file);
+        cmd_info(path);
     } else if args.cmd_update {
         cmd_update(args, path, current_time);
     } else if args.cmd_mark {
@@ -72,7 +65,17 @@ pub fn main(){
     } else if args.cmd_create {
         cmd_create(args, path);
     } else {
-        panic!("must specify command");
+        println!("Must specify command.");
+    }
+}
+
+fn cmd_info(path: &str) {
+    let file_open = whisper::file::open(path);
+    match file_open {
+        Ok(whisper_file) => println!("{:?}", whisper_file),
+        Err(why) => {
+            println!("could create whisper file: {:?}", why)
+        }
     }
 }
 
@@ -110,103 +113,11 @@ fn cmd_thrash(args: Args, path: &str, current_time: u64) {
     }
 }
 
-fn mult_str_to_num(mult_str: &str) -> u64 {
-    match mult_str {
-        "s" => 1,
-        "m" => 60,
-        "h" => 60*60,
-        "d" => 60*60*24,
-        "w" => 60*60*24*7,
-        "y" => 60*60*24*365,
-        _   => {
-            // should never pass regex
-            println!("All retention policies must be valid. Exiting.");
-            exit(1);
-        }
+fn cmd_create(args: Args, path: &str) {
+    let schema = Schema::new_from_retention_specs(args.arg_timespec);
+    let new_result = whisper::file::WhisperFile::new(path, schema);
+    match new_result {
+        Ok(whisper_file) => println!("Success! {:?}", whisper_file),
+        Err(why) => println!("Failed: {:?}", why)
     }
-}
-
-fn retention_capture_to_pair(regex_match: regex::Captures) -> Option<whisper::schema::RetentionPolicy> {
-    let precision_opt = regex_match.at(1);
-    let precision_mult = regex_match.at(2).unwrap_or("s");
-    let duration_opt = regex_match.at(3);
-    let duration_mult = regex_match.at(4).unwrap_or("s");
-
-    if precision_opt.is_some() && duration_opt.is_some() {
-        let precision = precision_opt.unwrap().parse::<u64>().unwrap();
-        let duration = duration_opt.unwrap().parse::<u64>().unwrap();
-
-        let retention_spec = whisper::schema::RetentionPolicy {
-            precision: precision * mult_str_to_num(precision_mult),
-            duration: duration * mult_str_to_num(duration_mult)
-        };
-
-        Some(retention_spec)
-    } else {
-        None
-    }
-}
-
-fn parse_spec_to_retention_policy(spec: &str) -> Option<RetentionPolicy> {
-    // TODO: regex should be built as const using macro regex!
-    // but that's only available in nightlies.
-    let retention_matcher = regex::Regex::new({r"^(\d+)([smhdwy])?:(\d+)([smhdwy])?$"}).unwrap();
-    match retention_matcher.captures(spec) {
-        Some(regex_match) => {
-            retention_capture_to_pair(regex_match)
-        },
-        None => None
-    }
-}
-
-fn validate_retention_policies(expanded_pairs: &Vec<(&String, &Option<RetentionPolicy>)> ) {
-        let _ : Vec<()> = expanded_pairs.iter().map(|pair: &(&String, &Option<RetentionPolicy>)| {
-            let (ref string, ref opt) = *pair;
-            if opt.is_none() {
-                println!("error: {} is not a valid retention policy", string);
-                exit(1);
-            }
-        }).collect();
-}
-
-fn cmd_create(args: Args, _: &str) {
-    let arg_file = args.arg_file.clone();
-    let path = unsafe {
-        arg_file.slice_unchecked(0, args.arg_file.len())
-    };
-
-    let retention_policies : Vec<RetentionPolicy> = {
-        let specs : Vec<String> = args.arg_timespec;
-
-        let expanded_pairs : Vec<Option<RetentionPolicy>> = specs.iter().map(|ts| {
-            parse_spec_to_retention_policy(ts)
-        }).collect();
-
-        if expanded_pairs.iter().any(|x| x.is_none()) {
-            let specs_iter = specs.iter();
-            let pairs_iter = expanded_pairs.iter();
-            let error_pairs : Vec<(&String, &Option<RetentionPolicy>)> = specs_iter.zip(pairs_iter).collect();
-            validate_retention_policies(&error_pairs);
-        }
-
-        expanded_pairs.iter().filter(|x| x.is_some()).map(|x| x.unwrap()).collect()
-    };
-
-    let schema = Schema{ retention_policies: retention_policies };
-    let size_needed = schema.size_on_disk();
-    let opened_file = OpenOptions::new().read(false).write(true).create(true).open(path);
-    match opened_file {
-        Ok(f) => {
-            let raw_f = f.as_raw_fd();
-            let retval = unsafe {
-                // TODO skip to fallocate-like behavior. Will need wrapper for OSX.
-                ftruncate(raw_f, size_needed as i64)
-            };
-            println!("neat! {}", retval)
-        },
-        Err(_) => println!("eh")
-    }
-
-    println!("schema: {:?}", schema);
-    println!("size on disk: {}", schema.size_on_disk());
 }

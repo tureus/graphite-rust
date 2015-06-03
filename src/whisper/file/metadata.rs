@@ -1,5 +1,7 @@
-use std::io::Cursor;
-use byteorder::{BigEndian, ReadBytesExt};
+use std::fs::File;
+
+use std::io::{ BufWriter, Cursor, Write };
+use byteorder::{ ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt };
 
 // 4 32bit (4-byte) values
 pub const METADATA_DISK_SIZE : u64 = 16;
@@ -20,6 +22,28 @@ pub struct Metadata {
     pub max_retention: u32,
     pub x_files_factor: f32,
     pub archive_count: u32
+}
+
+impl Metadata {
+    pub fn write(&self, mut file: &File) {
+        let mut arr = [0u8; METADATA_DISK_SIZE as usize];
+        let buf : &mut [u8] = &mut arr;
+
+        self.fill_buf(buf);
+        file.write_all(buf).unwrap();
+    }
+
+    fn fill_buf(&self, buf: &mut [u8]) {
+        debug!("writing metadata");
+        let mut writer = BufWriter::new(buf);
+
+        let ref agg_val = self.aggregation_type;
+        let agg_id = aggregation_type_to_id(&agg_val);
+        writer.write_u32::<BigEndian>(agg_id).unwrap();
+        writer.write_u32::<BigEndian>(self.max_retention).unwrap();
+        writer.write_f32::<BigEndian>(self.x_files_factor).unwrap();
+        writer.write_u32::<BigEndian>(self.archive_count).unwrap();
+    }
 }
 
 pub fn slice_to_metadata(buf: &[u8]) -> Metadata {
@@ -47,5 +71,17 @@ fn aggregation_type_from_id(id: u32) -> AggregationType{
         4 => AggregationType::Max,
         5 => AggregationType::Min,
         _ => AggregationType::Unknown
+    }
+}
+
+fn aggregation_type_to_id(aggregation_type: &AggregationType) -> u32 {
+    match *aggregation_type {
+        AggregationType::Average  => 1,
+        AggregationType::Sum  => 2,
+        AggregationType::Last  => 3,
+        AggregationType::Max  => 4,
+        AggregationType::Min  => 5,
+        // TODO should be a panic
+        AggregationType::Unknown  => 1
     }
 }

@@ -1,16 +1,22 @@
-// use std::io::Error;
 use std::fs::File;
 use std::io::{SeekFrom, Seek, Read, Write};
 use std::fs::OpenOptions;
 use std::fmt;
 use num::iter::range_step_inclusive;
 use std::cell::RefCell;
+use std::io::Error;
+
+extern crate libc;
+use self::libc::funcs::posix01::unistd::ftruncate;
+use std::os::unix::prelude::AsRawFd;
 
 use super::header::{ Header, read_header };
 use super::write_op::WriteOp;
 use super::archive_info::{ ArchiveInfo };
 use super::metadata::{Metadata, AggregationType};
 use whisper::schema::Schema;
+use super::{ METADATA_DISK_SIZE, ARCHIVE_INFO_DISK_SIZE };
+
 
 use whisper::point;
 
@@ -27,33 +33,64 @@ impl<'a> fmt::Debug for WhisperFile<'a> {
 }
 
 // TODO: Change error value to generic Error
-pub fn open(path: &str) -> Result<WhisperFile, &'static str> {
-    let file_handle = OpenOptions::new().read(true).write(true).create(false).open(path);
-
-    match file_handle {
-        Ok(f) => {
-            let header = try!(read_header(&f));
-            let whisper_file = WhisperFile { path: path, header: header, handle: RefCell::new(f) };
-            Ok( whisper_file )
-        },
-        Err(_) => {
-            Err("generic file error")
-        }
-    }
+pub fn open(path: &str) -> Result<WhisperFile, Error> {
+    let file = try!(OpenOptions::new().read(true).write(true).create(false).open(path));
+    let header = try!(read_header(&file));
+    let whisper_file = WhisperFile { path: path, header: header, handle: RefCell::new(file) };
+    Ok(whisper_file)
 }
 
 impl<'a> WhisperFile<'a> {
-    pub fn new(path: &str, schema: Schema, metadata: Metadata) -> WhisperFile {
-        let size_on_disk = schema.size_on_disk();
-        debug!("size_on_disk: {}", size_on_disk);
 
-        // zero-file to that size
-        // write header
-        // write metadata
+    pub fn new(path: &str, schema: Schema /* , _: Metadata */) -> Result<WhisperFile, Error> {
+        let size_needed = schema.size_on_disk();
+        let opened_file = try!(OpenOptions::new().read(true).write(true).create(true).open(path));
 
-        // let file_handle = OpenOptions::new().read(false).write(true).create(true).open(path);
+        // Allocate the room necessary
+        debug!("allocating...");
+        {
+            let raw_fd = opened_file.as_raw_fd();
+            let retval = unsafe {
+                // TODO skip to fallocate-like behavior. Will need wrapper for OSX.
+                ftruncate(raw_fd, size_needed as i64)
+            };
+            if retval != 0 {
+                return Err(Error::last_os_error());
+            }
+        }
+        debug!("done allocating");
 
-        panic!("hey!")
+        let metadata = {
+            // TODO make agg_t, max_r options from the command line.
+            let aggregation_type = AggregationType::Average;
+            let x_files_factor = 0.5;
+            Metadata {
+                aggregation_type: aggregation_type,
+                max_retention: schema.max_retention() as u32,
+                x_files_factor: x_files_factor,
+                archive_count: schema.retention_policies.len() as u32
+            }
+        };
+
+        // Piggy back on moving file write forward
+        metadata.write(&opened_file);
+
+        let initial_archive_offset = schema.header_size_on_disk();
+        schema.retention_policies.iter().fold(initial_archive_offset, |offset, &rp| {
+            debug!("sup");
+            rp.write(&opened_file, offset);
+            offset + rp.size_on_disk()
+        });
+
+        let new_whisper_file = WhisperFile {
+            path: path,
+            handle: RefCell::new(opened_file),
+            header: Header {
+                metadata: metadata,
+                archive_infos: vec![]
+            }
+        };
+        Ok(new_whisper_file)
     }
 
     // TODO: Result<usize> return how many write ops were done
