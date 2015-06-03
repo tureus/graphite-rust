@@ -1,21 +1,30 @@
 mod retention_policy;
 
+use std::fs::File;
+
 pub use self::retention_policy::RetentionPolicy;
 
 use super::file::{ METADATA_DISK_SIZE, ARCHIVE_INFO_DISK_SIZE };
 
-// #[derive(Debug)]
+#[derive(Debug)]
 pub struct Schema {
     pub retention_policies: Vec<RetentionPolicy>
 }
 
 impl Schema {
     pub fn size_on_disk(&self) -> u64 {
-        let retention_size = self.retention_policies.iter().fold(0, |tally, policy| {
+        let retentions_disk_size = self.retention_policies.iter().fold(0, |tally, policy| {
+            debug!("policy: {:?} size on disk: {}", policy, policy.size_on_disk());
             tally + policy.size_on_disk()
         });
 
-        METADATA_DISK_SIZE as u64 + ARCHIVE_INFO_DISK_SIZE as u64 +retention_size
+        METADATA_DISK_SIZE as u64 +
+        (ARCHIVE_INFO_DISK_SIZE*self.retention_policies.len()) as u64 +
+        retentions_disk_size
+    }
+
+    pub fn prepare(&self, _: File) {
+        println!("sup file!");
     }
 }
 
@@ -23,12 +32,12 @@ impl Schema {
 fn test_size_on_disk(){
     let first_policy = RetentionPolicy {
         precision: 1,
-        points: 60
+        duration: 60
     };
 
     let second_policy = RetentionPolicy {
         precision: 60,
-        points: 60
+        duration: 60
     };
 
 
@@ -37,8 +46,9 @@ fn test_size_on_disk(){
     };
 
     let expected = METADATA_DISK_SIZE as u64
-            + first_policy.size_on_disk()
-            + second_policy.size_on_disk();
+            + ARCHIVE_INFO_DISK_SIZE as u64 * 2
+            + 60*12 // first policy size
+            + 1*12; // second policy size
 
     little_schema.retention_policies.push(first_policy);
     little_schema.retention_policies.push(second_policy);

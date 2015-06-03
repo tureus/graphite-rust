@@ -1,6 +1,7 @@
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 
+// 4 32bit (4-byte) values
 pub const METADATA_DISK_SIZE : u64 = 16;
 
 #[derive(PartialEq,Debug)]

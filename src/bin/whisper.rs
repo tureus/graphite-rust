@@ -1,17 +1,20 @@
 extern crate graphite;
 
+extern crate libc;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
 extern crate rustc_serialize;
 extern crate docopt;
 extern crate time;
-
 extern crate regex;
 
+use std::fs::OpenOptions;
+use std::os::unix::prelude::AsRawFd;
 use docopt::Docopt;
 use graphite::whisper;
-use graphite::whisper::schema::RetentionPolicy;
+use graphite::whisper::schema::{ Schema, RetentionPolicy };
+use libc::funcs::posix01::unistd::ftruncate;
 use std::process::exit;
 
 static USAGE: &'static str = "
@@ -126,16 +129,16 @@ fn mult_str_to_num(mult_str: &str) -> u64 {
 fn retention_capture_to_pair(regex_match: regex::Captures) -> Option<whisper::schema::RetentionPolicy> {
     let precision_opt = regex_match.at(1);
     let precision_mult = regex_match.at(2).unwrap_or("s");
-    let points_opt = regex_match.at(3);
-    let points_mult = regex_match.at(4).unwrap_or("s");
+    let duration_opt = regex_match.at(3);
+    let duration_mult = regex_match.at(4).unwrap_or("s");
 
-    if precision_opt.is_some() && points_opt.is_some() {
+    if precision_opt.is_some() && duration_opt.is_some() {
         let precision = precision_opt.unwrap().parse::<u64>().unwrap();
-        let points = points_opt.unwrap().parse::<u64>().unwrap();
+        let duration = duration_opt.unwrap().parse::<u64>().unwrap();
 
         let retention_spec = whisper::schema::RetentionPolicy {
             precision: precision * mult_str_to_num(precision_mult),
-            points: points * mult_str_to_num(points_mult)
+            duration: duration * mult_str_to_num(duration_mult)
         };
 
         Some(retention_spec)
@@ -167,7 +170,11 @@ fn validate_retention_policies(expanded_pairs: &Vec<(&String, &Option<RetentionP
 }
 
 fn cmd_create(args: Args, _: &str) {
-    
+    let arg_file = args.arg_file.clone();
+    let path = unsafe {
+        arg_file.slice_unchecked(0, args.arg_file.len())
+    };
+
     let retention_policies : Vec<RetentionPolicy> = {
         let specs : Vec<String> = args.arg_timespec;
 
@@ -185,5 +192,21 @@ fn cmd_create(args: Args, _: &str) {
         expanded_pairs.iter().filter(|x| x.is_some()).map(|x| x.unwrap()).collect()
     };
 
-    println!("retention_policies: {:?}", retention_policies);
+    let schema = Schema{ retention_policies: retention_policies };
+    let size_needed = schema.size_on_disk();
+    let opened_file = OpenOptions::new().read(false).write(true).create(true).open(path);
+    match opened_file {
+        Ok(f) => {
+            let raw_f = f.as_raw_fd();
+            let retval = unsafe {
+                // TODO skip to fallocate-like behavior. Will need wrapper for OSX.
+                ftruncate(raw_f, size_needed as i64)
+            };
+            println!("neat! {}", retval)
+        },
+        Err(_) => println!("eh")
+    }
+
+    println!("schema: {:?}", schema);
+    println!("size on disk: {}", schema.size_on_disk());
 }

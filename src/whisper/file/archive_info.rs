@@ -3,6 +3,7 @@ use byteorder::{ BigEndian, ReadBytesExt, ByteOrder };
 
 use whisper::point::{Point, POINT_SIZE};
 
+// offset (32bit) + seconds per point (32bit) + number of points (32bit)
 pub const ARCHIVE_INFO_DISK_SIZE : usize = 12;
 
 //Don't think we need Copy/Clone. Just added it to make tests easier to write.
