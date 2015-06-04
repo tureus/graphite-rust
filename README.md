@@ -15,7 +15,7 @@ This crate provides the graphite ecosystem of tools.
  - [X] Read single point
  - [X] Write to single archive
  - [X] Write through all archives with downsampling
- - [ ] Create files
+ - [X] Create files
  - [ ] Read many points
  - [ ] Lock files
  - [ ] Cache data for sampling (PROFILING)
