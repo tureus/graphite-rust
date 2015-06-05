@@ -33,22 +33,24 @@ impl<'a> fmt::Debug for WhisperFile<'a> {
 impl<'a> fmt::Display for WhisperFile<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let ref metadata = self.header.metadata;
+        let ref archive_infos = self.header.archive_infos;
 
-        write!(f,
-"whisper file ({path})
-  metadata:
-    aggregation method: {aggregation_type:?}
-    max retention: {max_retention}
-    xff: {x_files_factor}
-  archives:
-{archives:?}
-",
-        // Arguments
-        path = self.path,
-        aggregation_type = metadata.aggregation_type,
-        max_retention = metadata.max_retention,
-        x_files_factor = metadata.x_files_factor,
-        archives = self.header.archive_infos )
+        try!(write!(f, "whisper file ({})\n", self.path));
+        try!(write!(f, "  metadata\n"));
+        try!(write!(f, "    aggregation method: {:?}\n", metadata.aggregation_type));
+        try!(write!(f, "    max retention: {:?}\n", metadata.max_retention));
+        try!(write!(f, "    xff: {:?}\n", metadata.x_files_factor));
+        let mut index = 0;
+        for archive_info in archive_infos.iter() {
+        try!(write!(f, "  archive {}\n", index));
+        try!(write!(f, "    seconds per point: {}\n", archive_info.seconds_per_point));
+        try!(write!(f, "    points: {}\n", archive_info.points));
+        try!(write!(f, "    retention: {} (s)\n", archive_info.retention));
+        try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes));
+
+            index = index+1;
+        };
+        write!(f,"") // make the types happy
     }
 }
 
