@@ -15,8 +15,6 @@ use super::write_op::WriteOp;
 use super::archive_info::{ ArchiveInfo };
 use super::metadata::{Metadata, AggregationType};
 use whisper::schema::Schema;
-use super::{ METADATA_DISK_SIZE, ARCHIVE_INFO_DISK_SIZE };
-
 
 use whisper::point;
 
@@ -32,7 +30,28 @@ impl<'a> fmt::Debug for WhisperFile<'a> {
     }
 }
 
-// TODO: Change error value to generic Error
+impl<'a> fmt::Display for WhisperFile<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ref metadata = self.header.metadata;
+
+        write!(f,
+"whisper file ({path})
+  metadata:
+    aggregation method: {aggregation_type:?}
+    max retention: {max_retention}
+    xff: {x_files_factor}
+  archives:
+{archives:?}
+",
+        // Arguments
+        path = self.path,
+        aggregation_type = metadata.aggregation_type,
+        max_retention = metadata.max_retention,
+        x_files_factor = metadata.x_files_factor,
+        archives = self.header.archive_infos )
+    }
+}
+
 pub fn open(path: &str) -> Result<WhisperFile, Error> {
     let file = try!(OpenOptions::new().read(true).write(true).create(false).open(path));
     let header = try!(read_header(&file));

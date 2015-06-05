@@ -72,7 +72,7 @@ pub fn main(){
 fn cmd_info(path: &str) {
     let file_open = whisper::file::open(path);
     match file_open {
-        Ok(whisper_file) => println!("{:?}", whisper_file),
+        Ok(whisper_file) => println!("{}", whisper_file),
         Err(why) => {
             println!("could create whisper file: {:?}", why)
         }

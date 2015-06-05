@@ -25,17 +25,18 @@ pub fn read_header(mut file: &File) -> Result<Header, Error> {
     }
 
     let metadata = metadata::slice_to_metadata(header_buffer);
-    let mut archive_infos = vec![];
-    for _ in 0..metadata.archive_count {
+    let archive_infos : Vec<archive_info::ArchiveInfo> = (0..metadata.archive_count).map(|_| {
         let archive_info_buffer = &mut[0u8; ARCHIVE_INFO_DISK_SIZE];
         let archive_bytes_read = try!(file.read(archive_info_buffer));
+
+        // TODO: this return is for the block. I want it for the function.
         if archive_bytes_read != ARCHIVE_INFO_DISK_SIZE {
             return Err(Error::new(ErrorKind::Other, "could not get enough bytes for index"));
         }
 
-        let archive_info = archive_info::slice_to_archive_info(archive_info_buffer);
-        archive_infos.push(archive_info);
-    }
+        Ok(archive_info::slice_to_archive_info(archive_info_buffer))
+    }).filter(|m| m.is_ok()).map(|m| m.unwrap()).collect();
+
     let header = Header {
         metadata: metadata,
         archive_infos: archive_infos

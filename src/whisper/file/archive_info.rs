@@ -1,4 +1,5 @@
 use std::io::{ Cursor, SeekFrom  };
+use std::fmt;
 use byteorder::{ BigEndian, ReadBytesExt, ByteOrder };
 
 use whisper::point::{Point, POINT_SIZE};
@@ -7,7 +8,7 @@ use whisper::point::{Point, POINT_SIZE};
 pub const ARCHIVE_INFO_DISK_SIZE : usize = 12;
 
 //Don't think we need Copy/Clone. Just added it to make tests easier to write.
-#[derive(PartialEq,Debug,Copy,Clone)]
+#[derive(PartialEq,Copy,Clone)]
 pub struct ArchiveInfo {
     pub offset: u64,
     pub seconds_per_point: u64,
@@ -17,6 +18,25 @@ pub struct ArchiveInfo {
     // TODO: made public so I can use it in tests
     pub size_in_bytes: u64
 }
+
+impl fmt::Debug for ArchiveInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+"       Archive
+            offset: {}
+            seconds per point: {}
+            points: {}
+            retention: {}
+
+",
+        self.offset,
+        self.seconds_per_point,
+        self.points,
+        self.retention
+)
+    }
+}
+
 
 pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
     let mut cursor = Cursor::new(buf);
