@@ -33,6 +33,9 @@ Status of the codes:
 */
 
 #![crate_name = "graphite"]
+#![feature(test)]
+extern crate test;
+
 extern crate time;
 extern crate byteorder;
 

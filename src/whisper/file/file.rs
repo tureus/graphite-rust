@@ -12,7 +12,7 @@ use std::os::unix::prelude::AsRawFd;
 
 use super::header::{ Header, read_header };
 use super::write_op::WriteOp;
-use super::archive_info::{ ArchiveInfo };
+use super::archive_info::ArchiveInfo;
 use super::metadata::{Metadata, AggregationType};
 use whisper::schema::Schema;
 
@@ -353,8 +353,6 @@ impl<'a> WhisperFile<'a> {
 fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timestamp: u64) -> WriteOp {
     let mut output_data = [0; 12];
     let interval_ceiling = archive_info.interval_ceiling(point.timestamp);
-    // debug!("interval_ceiling: {}", interval_ceiling);
-
     {
         let point_value = point.value;
         let buf : &mut [u8] = &mut output_data;
@@ -366,5 +364,32 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
     return WriteOp {
         seek: seek_info,
         bytes: output_data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use test::Bencher;
+    
+    use super::super::archive_info::ArchiveInfo;
+    use whisper::point::Point;
+    use super::build_write_op;
+
+    #[bench]
+    fn bench_build_write_op(b: &mut Bencher) {
+        let archive_info = ArchiveInfo {
+            offset: 28,
+            seconds_per_point: 60,
+            points: 1000,
+            retention: 10000,
+            size_in_bytes: 10000
+        };
+        let point = Point {
+            timestamp: 1000,
+            value: 10.0
+        };
+        let base_timestamp = 900;
+
+        b.iter(|| build_write_op(&archive_info, &point, base_timestamp));
     }
 }
