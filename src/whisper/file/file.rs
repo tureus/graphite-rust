@@ -35,21 +35,30 @@ impl<'a> fmt::Display for WhisperFile<'a> {
         let ref metadata = self.header.metadata;
         let ref archive_infos = self.header.archive_infos;
 
-        try!(write!(f, "whisper file ({})\n", self.path));
-        try!(write!(f, "  metadata\n"));
-        try!(write!(f, "    aggregation method: {:?}\n", metadata.aggregation_type));
-        try!(write!(f, "    max retention: {:?}\n", metadata.max_retention));
-        try!(write!(f, "    xff: {:?}\n", metadata.x_files_factor));
+        try!(writeln!(f, "whisper file ({})", self.path));
+        try!(writeln!(f, "  metadata"));
+        try!(writeln!(f, "    aggregation method: {:?}", metadata.aggregation_type));
+        try!(writeln!(f, "    max retention: {:?}", metadata.max_retention));
+        try!(writeln!(f, "    xff: {:?}", metadata.x_files_factor));
+
         let mut index = 0;
         for archive_info in archive_infos.iter() {
-        try!(write!(f, "  archive {}\n", index));
-        try!(write!(f, "    seconds per point: {}\n", archive_info.seconds_per_point));
-        try!(write!(f, "    points: {}\n", archive_info.points));
-        try!(write!(f, "    retention: {} (s)\n", archive_info.retention));
+        // Archive details
+        try!(writeln!(f, "  archive {}", index));
+        try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
+        try!(writeln!(f, "    points: {}", archive_info.points));
+        try!(writeln!(f, "    retention: {} (s)", archive_info.retention));
         try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes));
 
-            index = index+1;
-        };
+        // Print out all the data from this archive
+        let points : Vec<point::Point> = Vec::with_capacity(archive_info.points as usize);
+        try!(writeln!(f, "{:?}", points));
+
+        if index != archive_infos.len() - 1 {
+            try!(writeln!(f, ""));
+        }
+        index = index+1;
+        }
         write!(f,"") // make the types happy
     }
 }
