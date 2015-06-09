@@ -43,21 +43,26 @@ impl<'a> fmt::Display for WhisperFile<'a> {
 
         let mut index = 0;
         for archive_info in archive_infos.iter() {
-        // Archive details
-        try!(writeln!(f, "  archive {}", index));
-        try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
-        try!(writeln!(f, "    points: {}", archive_info.points));
-        try!(writeln!(f, "    retention: {} (s)", archive_info.retention));
-        try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes));
+            // Archive details
+            try!(writeln!(f, "  archive {}", index));
+            try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
+            try!(writeln!(f, "    points: {}", archive_info.points));
+            try!(writeln!(f, "    retention: {} (s)", archive_info.retention));
+            try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes));
 
-        // Print out all the data from this archive
-        let points : Vec<point::Point> = Vec::with_capacity(archive_info.points as usize);
-        try!(writeln!(f, "{:?}", points));
+            // Print out all the data from this archive
+            // let mut points : Vec<point::Point> = Vec::with_capacity(archive_info.points as usize);
+            try!(writeln!(f, "    data"));
+            for point_index in (0..archive_info.points) {
+                let offset = archive_info.offset + point_index*point::POINT_SIZE as u64;
+                let point = self.read_point(offset);
+                try!(writeln!(f, "      timestamp {} value {}", point.timestamp, point.value));
+            }
 
-        if index != archive_infos.len() - 1 {
-            try!(writeln!(f, ""));
-        }
-        index = index+1;
+            if index != archive_infos.len() - 1 {
+                try!(writeln!(f, ""));
+            }
+            index = index+1;
         }
         write!(f,"") // make the types happy
     }
@@ -370,7 +375,7 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
 #[cfg(test)]
 mod tests {
     use test::Bencher;
-    
+
     use super::super::archive_info::ArchiveInfo;
     use whisper::point::Point;
     use super::build_write_op;
