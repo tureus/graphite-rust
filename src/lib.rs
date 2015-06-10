@@ -33,6 +33,8 @@ Status of the codes:
 */
 
 #![crate_name = "graphite"]
+#![feature(trace_macros)]
+
 #![feature(test)]
 extern crate test;
 

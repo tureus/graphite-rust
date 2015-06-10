@@ -34,8 +34,7 @@ impl fmt::Debug for WhisperFile {
         try!(writeln!(f, "    max retention: {:?}", metadata.max_retention));
         try!(writeln!(f, "    xff: {:?}", metadata.x_files_factor));
 
-        let mut index = 0;
-        for archive_info in archive_infos.iter() {
+        for (index,archive_info) in (0..).zip(archive_infos.iter()) {
             // Archive details
             try!(writeln!(f, "  archive {}", index));
             try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
@@ -46,22 +45,15 @@ impl fmt::Debug for WhisperFile {
             // Print out all the data from this archive
             try!(writeln!(f, "    data"));
 
-            let mut points : Vec<point::Point> = Vec::with_capacity(archive_info.points as usize);
-            for _ in (0..archive_info.points){
-                points.push(point::Point{timestamp: 0, value: 0.0});
-            }
+            let mut points : Vec<point::Point> = vec![point::Point{timestamp: 0, value: 0.0}; archive_info.points as usize];
             self.read_points(archive_info.offset, &mut points[..]);
-
-            // for point_index in (0..archive_info.points) {
-            //     let offset = archive_info.offset + point_index*point::POINT_SIZE as u64;
-            //     let point = self.read_point(offset);
-            //     try!(writeln!(f, "      timestamp {} value {}", point.timestamp, point.value));
-            // }
+            for point in points {
+                try!(writeln!(f, "      timestamp: {} value: {}", point.timestamp, point.value));
+            }
 
             if index != archive_infos.len() - 1 {
                 try!(writeln!(f, ""));
             }
-            index = index+1;
         }
         write!(f,"") // make the types happy
     }
@@ -78,9 +70,7 @@ impl fmt::Display for WhisperFile {
         try!(writeln!(f, "    max retention: {:?}", metadata.max_retention));
         try!(writeln!(f, "    xff: {:?}", metadata.x_files_factor));
 
-        let mut index = 0;
-        for archive_info in archive_infos.iter() {
-            // Archive details
+        for (index,archive_info) in (0..).zip(archive_infos.iter()) {
             try!(writeln!(f, "  archive {}", index));
             try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
             try!(writeln!(f, "    points: {}", archive_info.points));
@@ -90,18 +80,14 @@ impl fmt::Display for WhisperFile {
             if index != archive_infos.len() - 1 {
                 try!(writeln!(f, ""));
             }
-            index = index+1;
         }
         write!(f,"") // make the types happy
     }
 }
 
 pub fn open(path: &str) -> Result<WhisperFile, Error> {
-    let file = try!(OpenOptions::new().
-        read(true).
-        write(true).
-        create(false).
-        open(path));
+    let file = try!(OpenOptions::new().read(true).write(true)
+                        .create(false).open(path));
 
     let header = try!(read_header(&file));
     let whisper_file = WhisperFile { header: header, handle: RefCell::new(file) };
@@ -120,7 +106,7 @@ impl WhisperFile {
         let size_needed = schema.size_on_disk();
 
         // Allocate the room necessary
-        debug!("allocating...");
+        debug!("allocating {} bytes...", size_needed);
         {
             let raw_fd = opened_file.as_raw_fd();
             let retval = unsafe {
@@ -150,7 +136,6 @@ impl WhisperFile {
 
         let initial_archive_offset = schema.header_size_on_disk();
         schema.retention_policies.iter().fold(initial_archive_offset, |offset, &rp| {
-            debug!("sup");
             rp.write(&opened_file, offset);
             offset + rp.size_on_disk()
         });
@@ -206,23 +191,18 @@ impl WhisperFile {
     // Attempt at a weird API: you pass me a slice and I fill it with points.
     // Unfortunately you have to fill the buffer yourself
     fn read_points(&self, offset: u64, points: &mut [point::Point]) {
+        let mut points_buf = vec![0; points.len() * point::POINT_SIZE];
+
         let mut file = self.handle.borrow_mut();
         file.seek(SeekFrom::Start(offset)).unwrap();
+        let bytes_read = file.read(&mut points_buf[..]).unwrap();
+        assert_eq!(bytes_read, points_buf.len());
 
-        // TODO: how the heck do I allocate a buffer of bytes?
-        let mut points_buf : Vec<u8> = Vec::with_capacity(points.len() * point::POINT_SIZE);
-        for _ in (0..points_buf.capacity()) {
-            points_buf.push(0);
-        }
-        file.read(&mut points_buf[..]).unwrap();
-
-        let buf_chunks = points_buf.chunks_mut(point::POINT_SIZE);
+        let buf_chunks = points_buf.chunks(point::POINT_SIZE);
         let index_chunk_pairs = (0..points.len()).zip(buf_chunks);
 
         for (index,chunk) in index_chunk_pairs {
-            println!("index {} chunk {:?}", index, chunk);
-            let point = point::buf_to_point(chunk);
-            points[index] = point;
+            points[index] = point::buf_to_point(chunk);
         }
     }
 
@@ -263,7 +243,6 @@ impl WhisperFile {
         assert!(h_res_archive.seconds_per_point < l_res_archive.seconds_per_point);
 
         let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
-        // debug!("base_timestamp: {}, l_interval_start: {}", base_timestamp, l_interval_start);
 
         let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
         let h_res_start_offset : u64 = if h_base_timestamp == 0 {
@@ -271,11 +250,10 @@ impl WhisperFile {
         } else {
             // TODO: this can be negative. Does that change timestamp understanding?
             let timespan  = l_interval_start as i64 - h_base_timestamp as i64;
-            // debug!("timespan {}", timespan);
             let points = timespan / h_res_archive.seconds_per_point as i64;
-            // debug!("points {}", points);
             let bytes = points * point::POINT_SIZE as i64;
 
+            // TODO: Work around for modulo not working the same as in python.
             // TODO: OMG, move this craziness somewhere else
             let wrapped_index = {
                 let remainder = bytes % h_res_archive.size_in_bytes as i64;
@@ -285,7 +263,6 @@ impl WhisperFile {
                     remainder
                 }
             };
-            // debug!("offset: {}, wrapped_index: {}, bytes: {}, points: {}", h_res_archive.offset, wrapped_index, bytes, points);
             (h_res_archive.offset as i64 + wrapped_index) as u64
         };
 
@@ -298,16 +275,11 @@ impl WhisperFile {
             h_res_archive.offset + rel_second_offset
         };
 
-        let mut h_res_read_buf : Vec<u8> = Vec::with_capacity(h_res_bytes_needed as usize);
+        let mut h_res_read_buf = vec![0; h_res_bytes_needed as usize];
 
         // Subroutine for filling in the buffer
         {
             let mut handle = self.handle.borrow_mut();
-
-            // TODO: must be a better way of zeroing out a buffer to fill in the vector
-            for _ in 0..h_res_bytes_needed {
-                h_res_read_buf.push(0);
-            }
 
             // TODO: refactor in to function which
             // returns ((Seek,BytesRead),Option<(Seek,BytesRead)>)
@@ -318,23 +290,19 @@ impl WhisperFile {
 
                 let mut read_buf : &mut [u8] = &mut h_res_read_buf[..];
                 handle.seek(seek).unwrap();
-                // debug!("READ FROM {} to {} (contiguous read)", h_res_start_offset, h_res_start_offset + read_buf.len() as u64);
                 handle.read(read_buf).unwrap();
             } else {
                 let high_res_abs_end = h_res_archive.offset + h_res_archive.size_in_bytes;
                 let first_seek = SeekFrom::Start(h_res_start_offset);
                 let first_seek_bytes = high_res_abs_end - h_res_start_offset;
 
-                // debug!("READ FROM {} to {} (wrap-around read 1)", h_res_start_offset, h_res_start_offset+first_seek_bytes);
-
+                // How cool is that? Guarantee there won't be overlap in buffers borrowed from same array.
                 let (first_buf, second_buf) = h_res_read_buf.split_at_mut(first_seek_bytes as usize);
 
                 handle.seek(first_seek).unwrap();
                 handle.read(first_buf).unwrap();
 
                 let second_seek = SeekFrom::Start(h_res_archive.offset);
-                // debug!("READ FROM {} to {} (wrap-around read 2)", h_res_archive.offset, h_res_archive.offset + second_buf.len() as u64);
-
                 handle.seek(second_seek).unwrap();
                 handle.read(second_buf).unwrap();
             }
@@ -356,10 +324,8 @@ impl WhisperFile {
                 zip(points.iter()).
                 map(|(ts, p)| {
                     if p.timestamp == ts {
-                        // debug!("comparing {} and {}/{} (MATCH!)", ts, p.timestamp, p.value);
                         Some(p)
                     } else {
-                        // debug!("comparing {} and {}/{}", ts, p.timestamp, p.value);
                         None
                     }
                 }).filter(|agg| !agg.is_none()).map(|agg| agg.unwrap()).collect();
@@ -374,13 +340,10 @@ impl WhisperFile {
     }
 
     fn aggregate_samples(&self, points: Vec<&point::Point>, points_possible: u64) -> Option<f64>{
-        // debug!("points: {:?}", points);
         let valid_points : Vec<&&point::Point> = points.iter().filter(|p| p.timestamp != 0).map(|p| p).collect();
 
         let ratio : f32 = valid_points.len() as f32 / points_possible as f32;
-        // debug!("valid_points: {}, len: {}, ratio {} vs xff {}", valid_points.len(), points.len(), ratio, self.header.metadata.x_files_factor);
         if ratio < self.header.metadata.x_files_factor {
-            // debug!("not enough data to propagate");
             return None;
         }
 
@@ -443,7 +406,7 @@ mod tests {
     use whisper::schema::{ Schema, RetentionPolicy };
 
     fn build_60_1440_wsp(prefix: &str) -> WhisperFile {
-        let path = format!("test/fixtures/{}", prefix);
+        let path = format!("test/fixtures/{}.wsp", prefix);
         let schema = Schema {
             retention_policies: vec![
                 RetentionPolicy {
@@ -453,7 +416,20 @@ mod tests {
             ]
         };
 
-        
+
+        WhisperFile::new(&path[..], schema).unwrap()
+    }
+
+    fn build_60_1440_1440_168_10080_52(prefix: &str) -> WhisperFile {
+        let path = format!("test/fixtures/{}.wsp", prefix);
+        let schema = Schema {
+            retention_policies: vec![
+                RetentionPolicy { precision: 60, retention: 1440},
+                RetentionPolicy { precision: 1440, retention: 168},
+                RetentionPolicy { precision: 10080, retention: 52},
+            ]
+        };
+
         WhisperFile::new(&path[..], schema).unwrap()
     }
 
@@ -498,9 +474,7 @@ mod tests {
 
     #[bench]
     fn bench_writing_through_a_large_file(b: &mut Bencher) {
-        let path = "test/fixtures/60-1440-1440-168-10080-52.wsp";
-        let mut whisper_file = build_60_1440_wsp("small_file");
-        let mut whisper_file = open(path).unwrap();
+        let mut whisper_file = build_60_1440_1440_168_10080_52("a_large_file");
         let current_time = time::get_time().sec as u64;
 
         b.iter(|| {
@@ -527,19 +501,10 @@ mod tests {
         let offset = file.header.archive_infos[0].offset;
         // read the first point of the first archive
 
-        let mut points_holder : Vec<Point> = Vec::with_capacity(10);
-        for _ in 0..points_holder.capacity() {
-            points_holder.push(Point{timestamp: 0, value: 0.0})
-        }
+        let mut points_holder : Vec<Point> = vec![ Point{ timestamp: 0, value: 0.0 }; 10 ];
+        file.read_points(offset, &mut points_holder[..]);
 
-        {
-            file.read_points(offset, &mut points_holder[..]);
-        }
-
-        let mut expected = vec![];
-        for _ in 0..points_holder.capacity() {
-            expected.push(Point{timestamp: 0, value: 0.0});
-        }
+        let expected = vec![Point{timestamp: 0, value: 0.0}; points_holder.len()];
         assert_eq!(points_holder, expected);
     }
 }

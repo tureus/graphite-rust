@@ -1,7 +1,7 @@
 use std::io::{ BufWriter, Cursor };
 use byteorder::{ ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt };
 
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq,Debug,Clone)]
 pub struct Point {
     pub timestamp: u64,
     pub value: f64

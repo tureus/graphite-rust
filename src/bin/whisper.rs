@@ -14,6 +14,7 @@ use graphite::whisper::schema::Schema;
 static USAGE: &'static str = "
 Usage:
     whisper info <file>
+    whisper dump <file>
     whisper update <file> <timestamp> <value>
     whisper mark <file> <value>
     whisper thrash <file> <value> <times>
@@ -27,6 +28,7 @@ Options:
 #[derive(RustcDecodable, Debug)]
 struct Args {
     cmd_info: bool,
+    cmd_dump: bool,
     cmd_update: bool,
     cmd_mark: bool,
     cmd_thrash: bool,
@@ -56,6 +58,8 @@ pub fn main(){
 
     if args.cmd_info {
         cmd_info(path);
+    } else if args.cmd_dump {
+        cmd_dump(path);
     } else if args.cmd_update {
         cmd_update(args, path, current_time);
     } else if args.cmd_mark {
@@ -73,6 +77,16 @@ fn cmd_info(path: &str) {
     let file_open = whisper::file::open(path);
     match file_open {
         Ok(whisper_file) => println!("{}", whisper_file),
+        Err(why) => {
+            println!("could create whisper file: {:?}", why)
+        }
+    }
+}
+
+fn cmd_dump(path: &str) {
+    let file_open = whisper::file::open(path);
+    match file_open {
+        Ok(whisper_file) => println!("{:?}", whisper_file),
         Err(why) => {
             println!("could create whisper file: {:?}", why)
         }
