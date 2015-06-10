@@ -4,7 +4,7 @@ mod retention_policy;
 
 use std::process::exit;
 
-use self::retention_policy::RetentionPolicy;
+pub use self::retention_policy::RetentionPolicy;
 
 use super::file::{ METADATA_DISK_SIZE, ARCHIVE_INFO_DISK_SIZE };
 
