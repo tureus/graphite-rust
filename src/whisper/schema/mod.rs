@@ -77,15 +77,33 @@ fn retention_capture_to_pair(regex_match: regex::Captures) -> Option<RetentionPo
     let precision_opt = regex_match.at(1);
     let precision_mult = regex_match.at(2).unwrap_or("s");
     let retention_opt = regex_match.at(3);
-    let retention_mult = regex_match.at(4).unwrap_or("s");
+    let retention_mult = regex_match.at(4);
 
     if precision_opt.is_some() && retention_opt.is_some() {
-        let precision = precision_opt.unwrap().parse::<u64>().unwrap();
-        let retention = retention_opt.unwrap().parse::<u64>().unwrap();
+        let precision = {
+            let base_precision = precision_opt.unwrap().parse::<u64>().unwrap();
+            base_precision * mult_str_to_num(precision_mult)
+        };
+
+        let retention = {
+            let base_retention = retention_opt.unwrap().parse::<u64>().unwrap();
+
+            match retention_mult {
+                Some(mult_str) => {
+                    base_retention * mult_str_to_num(mult_str)
+                },
+                None => {
+                    // user has not provided a multipler so this is interpreted
+                    // as the number of points so we have to
+                    // calculate retention from the number of points
+                    base_retention * precision
+                }
+            }
+        };
 
         let retention_spec = RetentionPolicy {
-            precision: precision * mult_str_to_num(precision_mult),
-            retention: retention * mult_str_to_num(retention_mult)
+            precision: precision,
+            retention: retention
         };
 
         Some(retention_spec)
