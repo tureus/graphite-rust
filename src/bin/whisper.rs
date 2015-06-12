@@ -12,6 +12,8 @@ use graphite::whisper;
 use graphite::whisper::schema::Schema;
 
 static USAGE: &'static str = "
+Whisper is the fast file manipulator
+
 Usage:
     whisper info <file>
     whisper dump <file>

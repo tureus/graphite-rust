@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{SeekFrom, Seek, Read, Write};
 use std::fs::OpenOptions;
 use std::fmt;
-use num::iter::range_step_inclusive;
+use num::iter::{ range_step_inclusive, RangeStepInclusive };
 use std::cell::RefCell;
 use std::io::Error;
 
@@ -12,7 +12,7 @@ use std::os::unix::prelude::AsRawFd;
 
 use super::header::{ Header, read_header };
 use super::write_op::WriteOp;
-use super::archive_info::ArchiveInfo;
+use super::archive_info::{ ArchiveInfo, ArchiveIndex };
 use super::metadata::{Metadata, AggregationType};
 use whisper::schema::Schema;
 
@@ -37,10 +37,11 @@ impl fmt::Debug for WhisperFile {
         for (index,archive_info) in (0..).zip(archive_infos.iter()) {
             // Archive details
             try!(writeln!(f, "  archive {}", index));
+            try!(writeln!(f, "    offset: {}", archive_info.offset));
             try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
             try!(writeln!(f, "    points: {}", archive_info.points));
             try!(writeln!(f, "    retention: {} (s)", archive_info.retention));
-            try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes));
+            try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes()));
 
             // Print out all the data from this archive
             try!(writeln!(f, "    data"));
@@ -72,10 +73,11 @@ impl fmt::Display for WhisperFile {
 
         for (index,archive_info) in (0..).zip(archive_infos.iter()) {
             try!(writeln!(f, "  archive {}", index));
+            try!(writeln!(f, "    offset: {}", archive_info.offset));
             try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
             try!(writeln!(f, "    points: {}", archive_info.points));
             try!(writeln!(f, "    retention: {} (s)", archive_info.retention));
-            try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes));
+            try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes()));
 
             if index != archive_infos.len() - 1 {
                 try!(writeln!(f, ""));
@@ -85,6 +87,7 @@ impl fmt::Display for WhisperFile {
     }
 }
 
+// TODO move to impl
 pub fn open(path: &str) -> Result<WhisperFile, Error> {
     let file = try!(OpenOptions::new().read(true).write(true)
                         .create(false).open(path));
@@ -134,17 +137,26 @@ impl WhisperFile {
         // Piggy back on moving file write forward
         metadata.write(&opened_file);
 
-        let initial_archive_offset = schema.header_size_on_disk();
-        schema.retention_policies.iter().fold(initial_archive_offset, |offset, &rp| {
-            rp.write(&opened_file, offset);
-            offset + rp.size_on_disk()
-        });
+        let mut archive_offset = schema.header_size_on_disk();
+
+        // write the archive info to disk and build ArchiveInfos
+        let archive_infos : Vec<ArchiveInfo> = schema.retention_policies.iter().map(|&rp| {
+            rp.write(&opened_file, archive_offset);
+            let archive_info = ArchiveInfo {
+                offset: archive_offset,
+                seconds_per_point: rp.precision,
+                retention: rp.retention,
+                points: rp.points()
+            };
+            archive_offset = archive_offset + rp.size_on_disk();
+            archive_info
+        }).collect();
 
         let new_whisper_file = WhisperFile {
             handle: RefCell::new(opened_file),
             header: Header {
                 metadata: metadata,
-                archive_infos: vec![]
+                archive_infos: archive_infos
             }
         };
         Ok(new_whisper_file)
@@ -189,7 +201,6 @@ impl WhisperFile {
     }
 
     // Attempt at a weird API: you pass me a slice and I fill it with points.
-    // Unfortunately you have to fill the buffer yourself
     fn read_points(&self, offset: u64, points: &mut [point::Point]) {
         let mut points_buf = vec![0; points.len() * point::POINT_SIZE];
 
@@ -212,15 +223,14 @@ impl WhisperFile {
             self.perform_write_op(&write_op);
         }
 
-        if rest.len() > 1 {
-            self.downsample(ai, rest[0], point.timestamp).map(|write_op| self.perform_write_op(&write_op) );
+        if rest.len() > 0 {
+            self.downsample_new(ai, rest[0], point.timestamp).map(|write_op| self.perform_write_op(&write_op) );
 
             let high_res_iter = rest[0..rest.len()-1].into_iter();
             let low_res_iter = rest[1..].into_iter();
-            let _ : Vec<()> = high_res_iter.
-                zip(low_res_iter).
+            let _ : Vec<()> = high_res_iter.zip(low_res_iter).
                 take_while(|&(h,l)| {
-                    match self.downsample(h, l, point.timestamp) {
+                    match self.downsample_new(h, l, point.timestamp) {
                         Some(write_op) => {
                             self.perform_write_op(&write_op);
                             true
@@ -233,115 +243,91 @@ impl WhisperFile {
         }
     }
 
-    // The most expensive IO functionality
-    // Reads many samples from high-res archive and
-    // aggregates to lower-res archive. Schemas could do well to avoid
-    // aggregation unless disk space is truly at a premium.
-    //
-    // A cache for each archive would do well here. `memmap` would be awesomesauce.
-    fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64) -> Option<WriteOp> {
-        assert!(h_res_archive.seconds_per_point < l_res_archive.seconds_per_point);
-
-        let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
-
-        let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
-        let h_res_start_offset : u64 = if h_base_timestamp == 0 {
-            h_res_archive.offset
-        } else {
-            // TODO: this can be negative. Does that change timestamp understanding?
-            let timespan  = l_interval_start as i64 - h_base_timestamp as i64;
-            let points = timespan / h_res_archive.seconds_per_point as i64;
-            let bytes = points * point::POINT_SIZE as i64;
-
-            // TODO: Work around for modulo not working the same as in python.
-            // TODO: OMG, move this craziness somewhere else
-            let wrapped_index = {
-                let remainder = bytes % h_res_archive.size_in_bytes as i64;
-                if remainder < 0 {
-                    h_res_archive.size_in_bytes as i64 + remainder
-                } else {
-                    remainder
-                }
-            };
-            (h_res_archive.offset as i64 + wrapped_index) as u64
+    // TODO convert to return value to Result<WriteOp> so we can log why an update couldn't be done
+    fn downsample_new(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64) -> Option<WriteOp> {
+        // allocate space for all necessary points from higher archive
+        let mut h_res_points = {
+            let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+            vec![point::Point{timestamp: 0, value: 0.0}; h_res_points_needed as usize]
         };
 
-        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
-        let h_res_bytes_needed = h_res_points_needed * point::POINT_SIZE as u64;
-
-        let h_res_end_offset = {
-            let rel_first_offset = h_res_start_offset - h_res_archive.offset;
-            let rel_second_offset = (rel_first_offset + h_res_bytes_needed) % h_res_archive.size_in_bytes;
-            h_res_archive.offset + rel_second_offset
-        };
-
-        let mut h_res_read_buf = vec![0; h_res_bytes_needed as usize];
-
-        // Subroutine for filling in the buffer
         {
-            let mut handle = self.handle.borrow_mut();
+            // plan reads
+            let reads = self.downsample(
+                h_res_archive, l_res_archive,
+                &mut h_res_points[..],
+                base_timestamp
+            );
 
-            // TODO: refactor in to function which
-            // returns ((Seek,BytesRead),Option<(Seek,BytesRead)>)
-            // so this code can be refactored and unit tested...
-            if h_res_start_offset < h_res_end_offset {
-                // No wrap situation
-                let seek = SeekFrom::Start(h_res_start_offset);
+            // perform reads
+            {
+                let ((first_index, first_buf), second_read) = reads;
+                {
+                    let file = self.handle.borrow_mut();
+                    h_res_archive.read_points(first_index, first_buf, file);
+                }
 
-                let mut read_buf : &mut [u8] = &mut h_res_read_buf[..];
-                handle.seek(seek).unwrap();
-                handle.read(read_buf).unwrap();
-            } else {
-                let high_res_abs_end = h_res_archive.offset + h_res_archive.size_in_bytes;
-                let first_seek = SeekFrom::Start(h_res_start_offset);
-                let first_seek_bytes = high_res_abs_end - h_res_start_offset;
-
-                // How cool is that? Guarantee there won't be overlap in buffers borrowed from same array.
-                let (first_buf, second_buf) = h_res_read_buf.split_at_mut(first_seek_bytes as usize);
-
-                handle.seek(first_seek).unwrap();
-                handle.read(first_buf).unwrap();
-
-                let second_seek = SeekFrom::Start(h_res_archive.offset);
-                handle.seek(second_seek).unwrap();
-                handle.read(second_buf).unwrap();
+                match second_read {
+                    Some((second_index, second_buf)) => {
+                        let file = self.handle.borrow_mut();
+                        h_res_archive.read_points(second_index, second_buf, file);
+                    },
+                    None => ()
+                }
             }
-
         }
 
-        let low_res_aggregate = {
-            let points : Vec<point::Point> = h_res_read_buf.chunks(point::POINT_SIZE).map(|chunk| {
-                point::buf_to_point(chunk)
+        // filter out of date samples
+        let total_possible_values = h_res_points.len();
+        let filtered_values = {
+            let expected_timestamps = {
+                let timestamp_start = l_res_archive.interval_ceiling(base_timestamp);
+                let timestamp_stop = timestamp_start + (h_res_points.len() as u64)*h_res_archive.seconds_per_point;
+                let step = h_res_archive.seconds_per_point;
 
-            }).collect();
-
-            let timestamp_start = l_interval_start;
-            let timestamp_stop = l_interval_start + (h_res_points_needed as u64)*h_res_archive.seconds_per_point;
-            let step = h_res_archive.seconds_per_point;
-
-            let expected_timestamps = range_step_inclusive(timestamp_start, timestamp_stop, step);
-            let valid_points : Vec<&point::Point> = expected_timestamps.
-                zip(points.iter()).
-                map(|(ts, p)| {
-                    if p.timestamp == ts {
-                        Some(p)
-                    } else {
-                        None
-                    }
-                }).filter(|agg| !agg.is_none()).map(|agg| agg.unwrap()).collect();
-            self.aggregate_samples(valid_points, h_res_points_needed)
+                range_step_inclusive(timestamp_start, timestamp_stop, step)
+            };
+            self.filter_values(h_res_points, expected_timestamps)
         };
 
-        low_res_aggregate.map(|aggregate| {
+        // perform aggregation
+        let aggregated_value = self.aggregate_samples_consume(filtered_values, total_possible_values as u64);
+        aggregated_value.map(|aggregate| {
+            let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
             let l_res_base_point = self.read_point(l_res_archive.offset);
             let l_res_point = point::Point{ timestamp: l_interval_start, value: aggregate };
             build_write_op(l_res_archive, &l_res_point, l_res_base_point.timestamp)
         })
+
+        // write data
     }
 
-    fn aggregate_samples(&self, points: Vec<&point::Point>, points_possible: u64) -> Option<f64>{
-        let valid_points : Vec<&&point::Point> = points.iter().filter(|p| p.timestamp != 0).map(|p| p).collect();
+    fn filter_values(&self, points: Vec<point::Point>, range: RangeStepInclusive<u64>) -> Vec<point::Point> {
+        let filtered_values : Vec<point::Point> = points.into_iter().zip(range).
+            filter_map(|(point, expected_timestamp)| {
+                if point.timestamp == expected_timestamp {
+                    Some(point)
+                } else {
+                    None
+                }
+            }).collect();
+        filtered_values
+    }
 
+    // TODO: reading the points at the archive_info offset is done more than once (confirm that)
+    // which means it can be cached and should be loaded to ArchiveInfo when those are parsed. How cool is that?
+    fn downsample<'a> (&'a self, h_res_archive: &ArchiveInfo,
+                                              l_res_archive: &ArchiveInfo,
+                                              h_res_points: &'a mut [point::Point],
+                                              base_timestamp: u64)
+        -> ((ArchiveIndex, &mut [point::Point]), Option<(ArchiveIndex, &mut [point::Point])>) {
+
+        let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
+        puur::downsample(h_res_archive, l_res_archive, h_res_points, base_timestamp, h_base_timestamp)
+
+    }
+
+    fn aggregate_samples_consume(&self, valid_points: Vec<point::Point>, points_possible: u64) -> Option<f64>{
         let ratio : f32 = valid_points.len() as f32 / points_possible as f32;
         if ratio < self.header.metadata.x_files_factor {
             return None;
@@ -350,19 +336,21 @@ impl WhisperFile {
         // TODO: we only do aggregation right now!
         match self.header.metadata.aggregation_type {
             AggregationType::Average => {
-                let sum = points.iter().map(|p| p.value).fold(0.0, |l, r| l + r);
-                Some(sum / points.len() as f64)
+                let valid_points_len = valid_points.len();
+                let sum = valid_points.into_iter().map(|p| p.value).fold(0.0, |l, r| l + r);
+                Some(sum / valid_points_len as f64)
             },
             _ => { Some(0.0) }
         }
     }
 
+    // TODO: don't create new vectors, borrow slice from archive_infos
     fn split(&self, current_time: u64, point_timestamp: u64) -> Option<(&ArchiveInfo, Vec<&ArchiveInfo>)>  {
         let mut archive_iter = self.header.archive_infos.iter();
         
-        let high_precision_archive_option = archive_iter.find(|ai|
+        let high_precision_archive_option = archive_iter.find(|ai| {
             ai.retention > (current_time - point_timestamp)
-        );
+        });
 
         match high_precision_archive_option {
             Some(ai) => {
@@ -395,15 +383,69 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
     }
 }
 
+pub mod puur {
+    use whisper::file::archive_info::{ ArchiveInfo, ArchiveIndex };
+    use whisper::point;
+
+    pub fn downsample<'a> (h_res_archive: &ArchiveInfo, 
+                           l_res_archive: &ArchiveInfo,
+                           h_res_points: &'a mut [point::Point],
+                           h_anchor_timestamp: u64, timestamp: u64)
+    -> ((ArchiveIndex, &'a mut [point::Point]), Option<(ArchiveIndex, &'a mut [point::Point])>) {
+        let h_res_start_index = {
+            if h_anchor_timestamp == 0 {
+                0
+            } else {
+                let l_interval_start = l_res_archive.interval_ceiling(timestamp);
+
+                // TODO: this can be negative. Does that change timestamp understanding?
+                let timespan  = l_interval_start as i64 - h_anchor_timestamp as i64;
+
+                let points = timespan / h_res_archive.seconds_per_point as i64;
+
+                // TODO: Work around for modulo not working the same as in python.
+                // TODO: OMG, move this craziness somewhere else
+                let wrapped_index = {
+                    let remainder = points % h_res_archive.points as i64;
+                    // panic!("remainder: {}", remainder);
+
+                    if remainder < 0 {
+                        h_res_archive.points as i64 + remainder
+                    } else {
+                        remainder
+                    }
+                };
+                wrapped_index as u64
+            }
+        };
+
+        let h_res_end_index = {
+            let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+            (h_res_start_index + h_res_points_needed) % h_res_archive.points
+        };
+
+        // Contiguous read. The easy one.
+        if h_res_start_index < h_res_end_index {
+            ((ArchiveIndex(h_res_start_index), &mut h_res_points[..]), None)
+        // Wrap-around read
+        } else {
+            let (first_buf, second_buf) = h_res_points.split_at_mut((h_res_archive.points - h_res_start_index) as usize);
+            ((ArchiveIndex(h_res_start_index),first_buf), Some((ArchiveIndex(0), second_buf)))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use test::Bencher;
     extern crate time;
 
-    use super::super::archive_info::ArchiveInfo;
+    use super::super::archive_info::{ ArchiveInfo, ArchiveIndex };
     use super::{ WhisperFile, build_write_op, open };
+    use super::puur;
     use whisper::point::Point;
     use whisper::schema::{ Schema, RetentionPolicy };
+    use whisper::file::metadata::{ Metadata, AggregationType };
 
     fn build_60_1440_wsp(prefix: &str) -> WhisperFile {
         let path = format!("test/fixtures/{}.wsp", prefix);
@@ -416,19 +458,17 @@ mod tests {
             ]
         };
 
-
         WhisperFile::new(&path[..], schema).unwrap()
     }
 
     fn build_60_1440_1440_168_10080_52(prefix: &str) -> WhisperFile {
         let path = format!("test/fixtures/{}.wsp", prefix);
-        let schema = Schema {
-            retention_policies: vec![
-                RetentionPolicy { precision: 60, retention: 1440},
-                RetentionPolicy { precision: 1440, retention: 168},
-                RetentionPolicy { precision: 10080, retention: 52},
-            ]
-        };
+        let specs = vec![
+            "1m:1h".to_string(),
+            "1h:1w".to_string(),
+            "1w:1y".to_string()
+        ];
+        let schema = Schema::new_from_retention_specs(specs);
 
         WhisperFile::new(&path[..], schema).unwrap()
     }
@@ -439,15 +479,13 @@ mod tests {
             offset: 28,
             seconds_per_point: 60,
             points: 1000,
-            retention: 10000,
-            size_in_bytes: 10000
+            retention: 10000
         };
         let point = Point {
             timestamp: 1000,
             value: 10.0
         };
         let base_timestamp = 900;
-
         b.iter(|| build_write_op(&archive_info, &point, base_timestamp));
     }
 
@@ -486,6 +524,123 @@ mod tests {
         });
     }
 
+    // Take for example the active bucket layout for two archives
+    // starting at time 100
+    //
+    // 1s archive with one wrap-around
+    // +-----------------------------------------------------------+
+    // |100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|
+    // +-----------------------------------------------------------+
+    // |115|116|117|118|119|120|121|122|123|124|125|126|127|128|129|
+    // +-----------------------------------------------------------+
+    //
+    // The second, 10s archive looks like this:
+    // +-----------------------------------------------------------+
+    // |010|020|030|040|050|060|070|080|090|100|110|120|130|140|150|
+    // +-----------------------------------------------------------+
+    //
+    // Now let's shift our focus to handling a write for time 119.
+    // 
+    // the 1s archive at time 119, due to wrap-around, looks something like this:
+    // +-----------------------------------------------------------+
+    // |115|116|117|118|119|105|106|107|108|109|110|111|112|113|114|
+    // +-----------------------------------------------------------+
+    //
+    // the 10s archive looks as before because it hasn't wrapped around yet:
+    // +-----------------------------------------------------------+
+    // |010|020|030|040|050|060|070|080|090|100|110|...|...|...|...|
+    // +-----------------------------------------------------------+
+    //
+    // At time 119 you are downsampling for the second archive's
+    // 110 slot. You need to consider all slots from the 1s archive
+    // which map to the 110s slot, namely: 110s-119s.
+    //
+    // Let's annotate the 1s archive with array indexes:
+    // +-----------------------------------------------------------+
+    // | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10| 11| 12| 13| 14|
+    // +-----------------------------------------------------------+
+    // |115|116|117|118|119|105|106|107|108|109|110|111|112|113|114|
+    // +-----------------------------------------------------------+
+    //
+    // To downsample to the 10s archive for slot 110 we need the
+    // 1s slots for 110 to 119. Which becomes indexes 10 to 14 and 0 to 4.
+    // The order matters, we want to to fill one pre-allocated buffer with the contiguous
+    // values so we can pass them back to the caller and hide this wrap-around
+    // complexity.
+    //
+    #[test]
+    fn test_split_read_ops() {
+        let h_res_archive = ArchiveInfo {
+            offset: 0,
+            seconds_per_point: 1,
+            points: 15,
+            retention: 15 // 15 seconds
+        };
+        let l_res_archive = ArchiveInfo {
+            offset: 60*12,
+            seconds_per_point: 10,
+            retention: 75, // 1 minutes 15 seconds
+            points: 15
+        };
+
+        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+        assert_eq!(h_res_points_needed, 10);
+
+        let mut h_res_points : Vec<Point> = vec![Point{timestamp: 0, value: 0.0}; h_res_points_needed as usize];
+
+        let ((first_index,first_buf), second_op) = puur::downsample(
+            &h_res_archive, &l_res_archive,
+            &mut h_res_points[..],
+            100, /* high res archive's base timestamp */
+            119  /* new point's timestamp */
+        );
+
+        assert_eq!(first_index, ArchiveIndex(10));
+        assert_eq!(first_buf.len(), 5);
+
+        assert!(second_op.is_some());
+        match second_op {
+            Some((second_index,second_buf)) => {
+                assert_eq!(second_buf.len(), 5);
+                assert_eq!(second_index, ArchiveIndex(0) );
+            },
+            None => panic!("shouldn't happen!")
+        };
+    }
+
+
+    #[test]
+    fn test_contiguous_read_ops() {
+        let h_res_archive = ArchiveInfo {
+            offset: 0,
+            seconds_per_point: 1,
+            points: 15,
+            retention: 15 // 15 seconds
+        };
+        let l_res_archive = ArchiveInfo {
+            offset: 60*12,
+            seconds_per_point: 10,
+            retention: 75, // 1 minutes 15 seconds
+            points: 15
+        };
+
+        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+        assert_eq!(h_res_points_needed, 10);
+
+        let mut h_res_points : Vec<Point> = vec![Point{timestamp: 0, value: 0.0}; h_res_points_needed as usize];
+
+        let ((first_index,first_buf),second_read) = puur::downsample(
+            &h_res_archive, &l_res_archive,
+            &mut h_res_points[..],
+            100, /* file's base timestamp */
+            102 /* new point's timestamp */
+        );
+
+        assert_eq!(first_index, ArchiveIndex(0));
+        assert_eq!(first_buf.len(), 10);
+        assert_eq!(second_read, None);
+    }
+
     #[test]
     fn test_read_point() {
         let file = open("test/fixtures/60-1440.wsp").unwrap();
@@ -506,5 +661,138 @@ mod tests {
 
         let expected = vec![Point{timestamp: 0, value: 0.0}; points_holder.len()];
         assert_eq!(points_holder, expected);
+    }
+
+    #[test]
+    fn test_new_file_has_correct_metadata() {
+        let specs = vec![
+            "1m:1h".to_string(),
+            "1h:1w".to_string(),
+            "1w:1y".to_string()
+        ];
+        let schema = Schema::new_from_retention_specs(specs);
+
+        let file = WhisperFile::new("test/fixtures/new_has_correct_metadata.wsp", schema).unwrap();
+        let header = file.header;
+
+        let expected_metadata = Metadata {
+            aggregation_type: AggregationType::Average,
+            max_retention: 60*60*24*365,
+            x_files_factor: 0.5,
+            archive_count: 3
+        };
+        assert_eq!(header.metadata, expected_metadata);
+
+        let archive_infos = header.archive_infos;
+        let expected_archive_infos = vec![
+            // 1m:1h
+            ArchiveInfo {
+                offset: 52,
+                seconds_per_point: 60,
+                retention: 60*60,
+                points: 60,
+            },
+            // 1h:1w
+            ArchiveInfo {
+                offset: 52 + 60*12,
+                seconds_per_point: 60*60,
+                retention: 60*60*24*7,
+                points: 24*7
+            },
+            // 1w:1y
+            ArchiveInfo {
+                offset: 52 + 60*12 + 24*7*12,
+                seconds_per_point: 60*60*24*7,
+                retention: 60*60*24*365,
+                points: 52
+            }
+        ];
+        assert_eq!(archive_infos.len(), expected_archive_infos.len());
+        assert_eq!(archive_infos[0], expected_archive_infos[0]);
+        assert_eq!(archive_infos[1], expected_archive_infos[1]);
+        assert_eq!(archive_infos[2], expected_archive_infos[2]);
+    }
+
+
+    #[test]
+    fn test_split_first_archive() {
+        let file = open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let current_time = time::get_time().sec as u64;
+        let point_timestamp = current_time - 100;
+        let (best,rest) = file.split(current_time, point_timestamp).unwrap();
+
+        let expected_best = ArchiveInfo {
+            offset: 52,
+            seconds_per_point: 60,
+            points: 1440,
+            retention: 86400,
+        };
+
+        let expected_rest = vec![
+            ArchiveInfo {
+                offset: 17332,
+                seconds_per_point: 1440,
+                points: 168,
+                retention: 241920
+            },
+            ArchiveInfo {
+                offset: 19348,
+                seconds_per_point: 10080,
+                points: 52,
+                retention: 524160
+            }
+        ];
+
+        // Silly Vec<&T> makes this annoying. See TODO to change to slices.
+        assert_eq!(rest.len(), 2);
+        assert_eq!(*(rest[0]), expected_rest[0]);
+        assert_eq!(*(rest[1]), expected_rest[1]);
+
+        assert_eq!(*best, expected_best);
+    }
+
+    #[test]
+    fn test_split_second_archive() {
+        let file = open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let current_time = time::get_time().sec as u64;
+
+        // one sample past the first archive's retention
+        let point_timestamp = current_time - 60*1441;
+
+        let (best,rest) = file.split(current_time, point_timestamp).unwrap();
+
+        let expected_best = ArchiveInfo {
+            offset: 17332,
+            seconds_per_point: 1440,
+            points: 168,
+            retention: 241920
+        };
+
+        let expected_rest = vec![
+            ArchiveInfo {
+                offset: 19348,
+                seconds_per_point: 10080,
+                points: 52,
+                retention: 524160
+            }
+        ];
+
+        // Silly Vec<&T> makes this annoying. See TODO to change to slices.
+        assert_eq!(rest.len(), 1);
+        assert_eq!(*(rest[0]), expected_rest[0]);
+
+        assert_eq!(*best, expected_best);
+    }
+
+    #[test]
+    fn test_split_no_archive() {
+        let file = open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let current_time = time::get_time().sec as u64;
+
+        // one sample past the first archive's retention
+        let point_timestamp = current_time - 10080*53;
+
+        let split = file.split(current_time, point_timestamp);
+        assert!(split.is_none());
     }
 }

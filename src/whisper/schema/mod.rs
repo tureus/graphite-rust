@@ -14,10 +14,11 @@ pub struct Schema {
 }
 
 impl Schema {
+    // TODO: Change to Result type
     pub fn new_from_retention_specs(specs: Vec<String>) -> Schema {
         let retention_policies : Vec<RetentionPolicy> = {
             let expanded_pairs : Vec<Option<RetentionPolicy>> = specs.iter().map(|ts| {
-                parse_spec_to_retention_policy(ts)
+                RetentionPolicy::spec_to_retention_policy(ts)
             }).collect();
 
             if expanded_pairs.iter().any(|x| x.is_none()) {
@@ -57,54 +58,7 @@ impl Schema {
 }
 
 
-fn mult_str_to_num(mult_str: &str) -> u64 {
-    match mult_str {
-        "s" => 1,
-        "m" => 60,
-        "h" => 60*60,
-        "d" => 60*60*24,
-        "w" => 60*60*24*7,
-        "y" => 60*60*24*365,
-        _   => {
-            // should never pass regex
-            println!("All retention policies must be valid. Exiting.");
-            exit(1);
-        }
-    }
-}
 
-fn retention_capture_to_pair(regex_match: regex::Captures) -> Option<RetentionPolicy> {
-    let precision_opt = regex_match.at(1);
-    let precision_mult = regex_match.at(2).unwrap_or("s");
-    let retention_opt = regex_match.at(3);
-    let retention_mult = regex_match.at(4).unwrap_or("s");
-
-    if precision_opt.is_some() && retention_opt.is_some() {
-        let precision = precision_opt.unwrap().parse::<u64>().unwrap();
-        let retention = retention_opt.unwrap().parse::<u64>().unwrap();
-
-        let retention_spec = RetentionPolicy {
-            precision: precision * mult_str_to_num(precision_mult),
-            retention: retention * mult_str_to_num(retention_mult)
-        };
-
-        Some(retention_spec)
-    } else {
-        None
-    }
-}
-
-fn parse_spec_to_retention_policy(spec: &str) -> Option<RetentionPolicy> {
-    // TODO: regex should be built as const using macro regex!
-    // but that's only available in nightlies.
-    let retention_matcher = regex::Regex::new({r"^(\d+)([smhdwy])?:(\d+)([smhdwy])?$"}).unwrap();
-    match retention_matcher.captures(spec) {
-        Some(regex_match) => {
-            retention_capture_to_pair(regex_match)
-        },
-        None => None
-    }
-}
 
 fn validate_retention_policies(expanded_pairs: &Vec<(&String, &Option<RetentionPolicy>)> ) {
     let _ : Vec<()> = expanded_pairs.iter().map(|pair: &(&String, &Option<RetentionPolicy>)| {

@@ -62,8 +62,7 @@ fn parses_60_1440() {
                 offset: 28,
                 seconds_per_point: 60,
                 points: 1440,
-                retention: 60*1440,
-                size_in_bytes: 1036800
+                retention: 60*1440
             }
         ]
     };
