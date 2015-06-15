@@ -253,7 +253,7 @@ impl WhisperFile {
 
         {
             // plan reads
-            let reads = self.downsample_new_read_ops(
+            let reads = self.downsample(
                 h_res_archive, l_res_archive,
                 &mut h_res_points[..],
                 base_timestamp
@@ -320,7 +320,7 @@ impl WhisperFile {
 
     // TODO: reading the points at the archive_info offset is done more than once (confirm that)
     // which means it can be cached and should be loaded to ArchiveInfo when those are parsed. How cool is that?
-    fn downsample_new_read_ops<'a> (&'a self, h_res_archive: &ArchiveInfo,
+    fn downsample<'a> (&'a self, h_res_archive: &ArchiveInfo,
                                               l_res_archive: &ArchiveInfo,
                                               h_res_points: &'a mut [point::Point],
                                               base_timestamp: u64)
@@ -330,113 +330,7 @@ impl WhisperFile {
         puur::downsample(h_res_archive, l_res_archive, h_res_points, base_timestamp, h_base_timestamp)
 
     }
-
-    // The most expensive IO functionality
-    // Reads many samples from high-res archive and
-    // aggregates to lower-res archive. Schemas could do well to avoid
-    // aggregation unless disk space is truly at a premium.
-    //
-    // A cache for each archive would do well here. `memmap` would be awesomesauce.
-    fn downsample(&self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, base_timestamp: u64) -> Option<WriteOp> {
-        assert!(h_res_archive.seconds_per_point < l_res_archive.seconds_per_point);
-
-        let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
-
-        let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
-        let h_res_start_offset : u64 = if h_base_timestamp == 0 {
-            h_res_archive.offset
-        } else {
-            // TODO: this can be negative. Does that change timestamp understanding?
-            let timespan  = l_interval_start as i64 - h_base_timestamp as i64;
-            let points = timespan / h_res_archive.seconds_per_point as i64;
-            let bytes = points * point::POINT_SIZE as i64;
-
-            // TODO: Work around for modulo not working the same as in python.
-            // TODO: OMG, move this craziness somewhere else
-            let wrapped_index = {
-                let remainder = bytes % h_res_archive.size_in_bytes() as i64;
-                if remainder < 0 {
-                    h_res_archive.size_in_bytes() as i64 + remainder
-                } else {
-                    remainder
-                }
-            };
-            (h_res_archive.offset as i64 + wrapped_index) as u64
-        };
-
-        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
-        let h_res_bytes_needed = h_res_points_needed * point::POINT_SIZE as u64;
-
-        let h_res_end_offset = {
-            let rel_first_offset = h_res_start_offset - h_res_archive.offset;
-            let rel_second_offset = (rel_first_offset + h_res_bytes_needed) % h_res_archive.size_in_bytes();
-            h_res_archive.offset + rel_second_offset
-        };
-
-        let mut h_res_read_buf = vec![0; h_res_bytes_needed as usize];
-
-        // Subroutine for filling in the buffer
-        {
-            let mut handle = self.handle.borrow_mut();
-
-            // TODO: refactor in to function which
-            // returns ((Seek,BytesRead),Option<(Seek,BytesRead)>)
-            // so this code can be refactored and unit tested...
-            if h_res_start_offset < h_res_end_offset {
-                // No wrap situation
-                let seek = SeekFrom::Start(h_res_start_offset);
-
-                let mut read_buf : &mut [u8] = &mut h_res_read_buf[..];
-                handle.seek(seek).unwrap();
-                handle.read(read_buf).unwrap();
-            } else {
-                let high_res_abs_end = h_res_archive.offset + h_res_archive.size_in_bytes();
-                let first_seek = SeekFrom::Start(h_res_start_offset);
-                let first_seek_bytes = high_res_abs_end - h_res_start_offset;
-
-                // How cool is that? Guarantee there won't be overlap in buffers borrowed from same array.
-                let (first_buf, second_buf) = h_res_read_buf.split_at_mut(first_seek_bytes as usize);
-
-                handle.seek(first_seek).unwrap();
-                handle.read(first_buf).unwrap();
-
-                let second_seek = SeekFrom::Start(h_res_archive.offset);
-                handle.seek(second_seek).unwrap();
-                handle.read(second_buf).unwrap();
-            }
-
-        }
-
-        let low_res_aggregate = {
-            let points : Vec<point::Point> = h_res_read_buf.chunks(point::POINT_SIZE).map(|chunk| {
-                point::buf_to_point(chunk)
-
-            }).collect();
-
-            let timestamp_start = l_interval_start;
-            let timestamp_stop = l_interval_start + (h_res_points_needed as u64)*h_res_archive.seconds_per_point;
-            let step = h_res_archive.seconds_per_point;
-
-            let expected_timestamps = range_step_inclusive(timestamp_start, timestamp_stop, step);
-            let valid_points : Vec<&point::Point> = expected_timestamps.
-                zip(points.iter()).
-                map(|(ts, p)| {
-                    if p.timestamp == ts {
-                        Some(p)
-                    } else {
-                        None
-                    }
-                }).filter(|agg| !agg.is_none()).map(|agg| agg.unwrap()).collect();
-            self.aggregate_samples(valid_points, h_res_points_needed)
-        };
-
-        low_res_aggregate.map(|aggregate| {
-            let l_res_base_point = self.read_point(l_res_archive.offset);
-            let l_res_point = point::Point{ timestamp: l_interval_start, value: aggregate };
-            build_write_op(l_res_archive, &l_res_point, l_res_base_point.timestamp)
-        })
-    }
-
+    
     fn aggregate_samples_consume(&self, valid_points: Vec<point::Point>, points_possible: u64) -> Option<f64>{
         let ratio : f32 = valid_points.len() as f32 / points_possible as f32;
         if ratio < self.header.metadata.x_files_factor {
