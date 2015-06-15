@@ -12,7 +12,7 @@ use std::os::unix::prelude::AsRawFd;
 
 use super::header::{ Header, read_header };
 use super::write_op::WriteOp;
-use super::archive_info::ArchiveInfo;
+use super::archive_info::{ ArchiveInfo, ArchiveIndex };
 use super::metadata::{Metadata, AggregationType};
 use whisper::schema::Schema;
 
@@ -320,9 +320,15 @@ impl WhisperFile {
 
     // TODO: reading the points at the archive_info offset is done more than once (confirm that)
     // which means it can be cached and should be loaded to ArchiveInfo when those are parsed. How cool is that?
-    fn downsample_new_read_ops<'a> (&'a self, h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, h_res_points: &'a mut [point::Point], base_timestamp: u64) -> ((u64, &mut [point::Point]), Option<(u64, &mut [point::Point])>) {
+    fn downsample_new_read_ops<'a> (&'a self, h_res_archive: &ArchiveInfo,
+                                              l_res_archive: &ArchiveInfo,
+                                              h_res_points: &'a mut [point::Point],
+                                              base_timestamp: u64)
+        -> ((ArchiveIndex, &mut [point::Point]), Option<(ArchiveIndex, &mut [point::Point])>) {
+
         let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
         downsample_new_read_ops_pure(h_res_archive, l_res_archive, h_res_points, base_timestamp, h_base_timestamp)
+
     }
 
     // The most expensive IO functionality
@@ -510,7 +516,7 @@ fn downsample_new_read_ops_pure<'a> (h_res_archive: &ArchiveInfo,
                                      l_res_archive: &ArchiveInfo,
                                      h_res_points: &'a mut [point::Point],
                                      h_anchor_timestamp: u64, timestamp: u64)
-    -> ((u64, &'a mut [point::Point]), Option<(u64, &'a mut [point::Point])>) {
+    -> ((ArchiveIndex, &'a mut [point::Point]), Option<(ArchiveIndex, &'a mut [point::Point])>) {
 
     let h_res_start_index = {
         if h_anchor_timestamp == 0 {
@@ -546,11 +552,11 @@ fn downsample_new_read_ops_pure<'a> (h_res_archive: &ArchiveInfo,
 
     // Contiguous read. The easy one.
     if h_res_start_index < h_res_end_index {
-        ((h_res_start_index, &mut h_res_points[..]), None)
+        ((ArchiveIndex(h_res_start_index), &mut h_res_points[..]), None)
     // Wrap-around read
     } else {
         let (first_buf, second_buf) = h_res_points.split_at_mut((h_res_archive.points - h_res_start_index) as usize);
-        ((h_res_start_index,first_buf), Some((0, second_buf)))
+        ((ArchiveIndex(h_res_start_index),first_buf), Some((ArchiveIndex(0), second_buf)))
     }
 }
 
@@ -628,14 +634,14 @@ mod tests {
             119  /* new point's timestamp */
         );
 
-        assert_eq!(first_index, 10);
+        assert_eq!(first_index, ArchiveIndex(10));
         assert_eq!(first_buf.len(), 5);
 
         assert!(second_op.is_some());
         match second_op {
             Some((second_index,second_buf)) => {
                 assert_eq!(second_buf.len(), 5);
-                assert_eq!(second_index,0);
+                assert_eq!(second_index, ArchiveIndex(0) );
             },
             None => panic!("shouldn't happen!")
         };
@@ -645,7 +651,7 @@ mod tests {
     use test::Bencher;
     extern crate time;
 
-    use super::super::archive_info::ArchiveInfo;
+    use super::super::archive_info::{ ArchiveInfo, ArchiveIndex };
     use super::{ WhisperFile, build_write_op, open, downsample_new_read_ops_pure };
     use whisper::point::Point;
     use whisper::schema::{ Schema, RetentionPolicy };

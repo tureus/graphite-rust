@@ -17,6 +17,8 @@ pub struct ArchiveInfo {
     pub retention: u64,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct ArchiveIndex(pub u64);
 
 pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
     let mut cursor = Cursor::new(buf);
@@ -58,8 +60,10 @@ impl ArchiveInfo {
         timestamp - (timestamp % self.seconds_per_point)
     }
 
-    pub fn read_points (&self, index_start: u64, points: &mut [Point], mut file: RefMut<File>) {
+    pub fn read_points (&self, archive_index: ArchiveIndex, points: &mut [Point], mut file: RefMut<File>) {
         let points_len = points.len() as u64;
+
+        let index_start = archive_index.0;
         let read_to = index_start + points_len;
         if (index_start + points.len() as u64) > self.points {
             panic!("self.points: {}, points.len(): {}", self.points, points.len());
