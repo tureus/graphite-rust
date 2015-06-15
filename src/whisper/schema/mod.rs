@@ -14,10 +14,11 @@ pub struct Schema {
 }
 
 impl Schema {
+    // TODO: Change to Result type
     pub fn new_from_retention_specs(specs: Vec<String>) -> Schema {
         let retention_policies : Vec<RetentionPolicy> = {
             let expanded_pairs : Vec<Option<RetentionPolicy>> = specs.iter().map(|ts| {
-                parse_spec_to_retention_policy(ts)
+                RetentionPolicy::spec_to_retention_policy(ts)
             }).collect();
 
             if expanded_pairs.iter().any(|x| x.is_none()) {
@@ -52,23 +53,6 @@ impl Schema {
             0
         } else {
             self.retention_policies.iter().map(|&rp| rp.retention).max().unwrap()
-        }
-    }
-}
-
-
-fn mult_str_to_num(mult_str: &str) -> u64 {
-    match mult_str {
-        "s" => 1,
-        "m" => 60,
-        "h" => 60*60,
-        "d" => 60*60*24,
-        "w" => 60*60*24*7,
-        "y" => 60*60*24*365,
-        _   => {
-            // should never pass regex
-            println!("All retention policies must be valid. Exiting.");
-            exit(1);
         }
     }
 }
