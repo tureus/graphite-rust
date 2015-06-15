@@ -327,7 +327,7 @@ impl WhisperFile {
         -> ((ArchiveIndex, &mut [point::Point]), Option<(ArchiveIndex, &mut [point::Point])>) {
 
         let h_base_timestamp = self.read_point(h_res_archive.offset).timestamp;
-        downsample_new_read_ops_pure(h_res_archive, l_res_archive, h_res_points, base_timestamp, h_base_timestamp)
+        puur::downsample(h_res_archive, l_res_archive, h_res_points, base_timestamp, h_base_timestamp)
 
     }
 
@@ -512,147 +512,66 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
     }
 }
 
-fn downsample_new_read_ops_pure<'a> (h_res_archive: &ArchiveInfo, 
-                                     l_res_archive: &ArchiveInfo,
-                                     h_res_points: &'a mut [point::Point],
-                                     h_anchor_timestamp: u64, timestamp: u64)
+pub mod puur {
+    use whisper::file::archive_info::{ ArchiveInfo, ArchiveIndex };
+    use whisper::point;
+
+    pub fn downsample<'a> (h_res_archive: &ArchiveInfo, 
+                           l_res_archive: &ArchiveInfo,
+                           h_res_points: &'a mut [point::Point],
+                           h_anchor_timestamp: u64, timestamp: u64)
     -> ((ArchiveIndex, &'a mut [point::Point]), Option<(ArchiveIndex, &'a mut [point::Point])>) {
+        let h_res_start_index = {
+            if h_anchor_timestamp == 0 {
+                0
+            } else {
+                let l_interval_start = l_res_archive.interval_ceiling(timestamp);
 
-    let h_res_start_index = {
-        if h_anchor_timestamp == 0 {
-            0
+                // TODO: this can be negative. Does that change timestamp understanding?
+                let timespan  = l_interval_start as i64 - h_anchor_timestamp as i64;
+
+                let points = timespan / h_res_archive.seconds_per_point as i64;
+
+                // TODO: Work around for modulo not working the same as in python.
+                // TODO: OMG, move this craziness somewhere else
+                let wrapped_index = {
+                    let remainder = points % h_res_archive.points as i64;
+                    // panic!("remainder: {}", remainder);
+
+                    if remainder < 0 {
+                        h_res_archive.points as i64 + remainder
+                    } else {
+                        remainder
+                    }
+                };
+                wrapped_index as u64
+            }
+        };
+
+        let h_res_end_index = {
+            let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+            (h_res_start_index + h_res_points_needed) % h_res_archive.points
+        };
+
+        // Contiguous read. The easy one.
+        if h_res_start_index < h_res_end_index {
+            ((ArchiveIndex(h_res_start_index), &mut h_res_points[..]), None)
+        // Wrap-around read
         } else {
-            let l_interval_start = l_res_archive.interval_ceiling(timestamp);
-
-            // TODO: this can be negative. Does that change timestamp understanding?
-            let timespan  = l_interval_start as i64 - h_anchor_timestamp as i64;
-
-            let points = timespan / h_res_archive.seconds_per_point as i64;
-
-            // TODO: Work around for modulo not working the same as in python.
-            // TODO: OMG, move this craziness somewhere else
-            let wrapped_index = {
-                let remainder = points % h_res_archive.points as i64;
-                // panic!("remainder: {}", remainder);
-
-                if remainder < 0 {
-                    h_res_archive.points as i64 + remainder
-                } else {
-                    remainder
-                }
-            };
-            wrapped_index as u64
+            let (first_buf, second_buf) = h_res_points.split_at_mut((h_res_archive.points - h_res_start_index) as usize);
+            ((ArchiveIndex(h_res_start_index),first_buf), Some((ArchiveIndex(0), second_buf)))
         }
-    };
-
-    let h_res_end_index = {
-        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
-        (h_res_start_index + h_res_points_needed) % h_res_archive.points
-    };
-
-    // Contiguous read. The easy one.
-    if h_res_start_index < h_res_end_index {
-        ((ArchiveIndex(h_res_start_index), &mut h_res_points[..]), None)
-    // Wrap-around read
-    } else {
-        let (first_buf, second_buf) = h_res_points.split_at_mut((h_res_archive.points - h_res_start_index) as usize);
-        ((ArchiveIndex(h_res_start_index),first_buf), Some((ArchiveIndex(0), second_buf)))
     }
 }
 
 #[cfg(test)]
 mod tests {
-
-    // Take for example the active bucket layout for two archives
-    // starting at time 100
-    //
-    // 1s archive with one wrap-around
-    // +-----------------------------------------------------------+
-    // |100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|
-    // +-----------------------------------------------------------+
-    // |115|116|117|118|119|120|121|122|123|124|125|126|127|128|129|
-    // +-----------------------------------------------------------+
-    //
-    // The second, 10s archive looks like this:
-    // +-----------------------------------------------------------+
-    // |010|020|030|040|050|060|070|080|090|100|110|120|130|140|150|
-    // +-----------------------------------------------------------+
-    //
-    // Now let's shift our focus to handling a write for time 119.
-    // 
-    // the 1s archive at time 119, due to wrap-around, looks something like this:
-    // +-----------------------------------------------------------+
-    // |115|116|117|118|119|105|106|107|108|109|110|111|112|113|114|
-    // +-----------------------------------------------------------+
-    //
-    // the 10s archive looks as before because it hasn't wrapped around yet:
-    // +-----------------------------------------------------------+
-    // |010|020|030|040|050|060|070|080|090|100|110|...|...|...|...|
-    // +-----------------------------------------------------------+
-    //
-    // At time 119 you are downsampling for the second archive's
-    // 110 slot. You need to consider all slots from the 1s archive
-    // which map to the 110s slot, namely: 110s-119s.
-    //
-    // Let's annotate the 1s archive with array indexes:
-    // +-----------------------------------------------------------+
-    // | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10| 11| 12| 13| 14|
-    // +-----------------------------------------------------------+
-    // |115|116|117|118|119|105|106|107|108|109|110|111|112|113|114|
-    // +-----------------------------------------------------------+
-    //
-    // To downsample to the 10s archive for slot 110 we need the
-    // 1s slots for 110 to 119. Which becomes indexes 10 to 14 and 0 to 4.
-    // The order matters, we want to to fill one pre-allocated buffer with the contiguous
-    // values so we can pass them back to the caller and hide this wrap-around
-    // complexity.
-    //
-    #[test]
-    fn test_split_read_ops() {
-        let h_res_archive = ArchiveInfo {
-            offset: 0,
-            seconds_per_point: 1,
-            points: 15,
-            retention: 15 // 15 seconds
-        };
-        let l_res_archive = ArchiveInfo {
-            offset: 60*12,
-            seconds_per_point: 10,
-            retention: 75, // 1 minutes 15 seconds
-            points: 15
-        };
-
-        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
-        assert_eq!(h_res_points_needed, 10);
-
-        let mut h_res_points : Vec<Point> = vec![Point{timestamp: 0, value: 0.0}; h_res_points_needed as usize];
-
-        let ((first_index,first_buf), second_op) = downsample_new_read_ops_pure(
-            &h_res_archive, &l_res_archive,
-            &mut h_res_points[..],
-            100, /* high res archive's base timestamp */
-            119  /* new point's timestamp */
-        );
-
-        assert_eq!(first_index, ArchiveIndex(10));
-        assert_eq!(first_buf.len(), 5);
-
-        assert!(second_op.is_some());
-        match second_op {
-            Some((second_index,second_buf)) => {
-                assert_eq!(second_buf.len(), 5);
-                assert_eq!(second_index, ArchiveIndex(0) );
-            },
-            None => panic!("shouldn't happen!")
-        };
-    }
-
-
     use test::Bencher;
     extern crate time;
 
     use super::super::archive_info::{ ArchiveInfo, ArchiveIndex };
-    use super::{ WhisperFile, build_write_op, open, downsample_new_read_ops_pure };
+    use super::{ WhisperFile, build_write_op, open };
+    use super::puur;
     use whisper::point::Point;
     use whisper::schema::{ Schema, RetentionPolicy };
     use whisper::file::metadata::{ Metadata, AggregationType };
@@ -735,6 +654,91 @@ mod tests {
     //         whisper_file.write(current_time, point);
     //     });
     // }
+
+    // Take for example the active bucket layout for two archives
+    // starting at time 100
+    //
+    // 1s archive with one wrap-around
+    // +-----------------------------------------------------------+
+    // |100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|
+    // +-----------------------------------------------------------+
+    // |115|116|117|118|119|120|121|122|123|124|125|126|127|128|129|
+    // +-----------------------------------------------------------+
+    //
+    // The second, 10s archive looks like this:
+    // +-----------------------------------------------------------+
+    // |010|020|030|040|050|060|070|080|090|100|110|120|130|140|150|
+    // +-----------------------------------------------------------+
+    //
+    // Now let's shift our focus to handling a write for time 119.
+    // 
+    // the 1s archive at time 119, due to wrap-around, looks something like this:
+    // +-----------------------------------------------------------+
+    // |115|116|117|118|119|105|106|107|108|109|110|111|112|113|114|
+    // +-----------------------------------------------------------+
+    //
+    // the 10s archive looks as before because it hasn't wrapped around yet:
+    // +-----------------------------------------------------------+
+    // |010|020|030|040|050|060|070|080|090|100|110|...|...|...|...|
+    // +-----------------------------------------------------------+
+    //
+    // At time 119 you are downsampling for the second archive's
+    // 110 slot. You need to consider all slots from the 1s archive
+    // which map to the 110s slot, namely: 110s-119s.
+    //
+    // Let's annotate the 1s archive with array indexes:
+    // +-----------------------------------------------------------+
+    // | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10| 11| 12| 13| 14|
+    // +-----------------------------------------------------------+
+    // |115|116|117|118|119|105|106|107|108|109|110|111|112|113|114|
+    // +-----------------------------------------------------------+
+    //
+    // To downsample to the 10s archive for slot 110 we need the
+    // 1s slots for 110 to 119. Which becomes indexes 10 to 14 and 0 to 4.
+    // The order matters, we want to to fill one pre-allocated buffer with the contiguous
+    // values so we can pass them back to the caller and hide this wrap-around
+    // complexity.
+    //
+    #[test]
+    fn test_split_read_ops() {
+        let h_res_archive = ArchiveInfo {
+            offset: 0,
+            seconds_per_point: 1,
+            points: 15,
+            retention: 15 // 15 seconds
+        };
+        let l_res_archive = ArchiveInfo {
+            offset: 60*12,
+            seconds_per_point: 10,
+            retention: 75, // 1 minutes 15 seconds
+            points: 15
+        };
+
+        let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
+        assert_eq!(h_res_points_needed, 10);
+
+        let mut h_res_points : Vec<Point> = vec![Point{timestamp: 0, value: 0.0}; h_res_points_needed as usize];
+
+        let ((first_index,first_buf), second_op) = puur::downsample(
+            &h_res_archive, &l_res_archive,
+            &mut h_res_points[..],
+            100, /* high res archive's base timestamp */
+            119  /* new point's timestamp */
+        );
+
+        assert_eq!(first_index, ArchiveIndex(10));
+        assert_eq!(first_buf.len(), 5);
+
+        assert!(second_op.is_some());
+        match second_op {
+            Some((second_index,second_buf)) => {
+                assert_eq!(second_buf.len(), 5);
+                assert_eq!(second_index, ArchiveIndex(0) );
+            },
+            None => panic!("shouldn't happen!")
+        };
+    }
+
 
     // #[test]
     // fn test_contiguous_read_ops() {
