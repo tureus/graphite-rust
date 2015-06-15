@@ -506,18 +506,22 @@ fn build_write_op(archive_info: &ArchiveInfo, point: &point::Point, base_timesta
     }
 }
 
-fn downsample_new_read_ops_pure<'a> (h_res_archive: &ArchiveInfo, l_res_archive: &ArchiveInfo, h_res_points: &'a mut [point::Point], base_timestamp: u64, h_base_timestamp: u64) -> ((u64, &'a mut [point::Point]), Option<(u64, &'a mut [point::Point])>) {
+fn downsample_new_read_ops_pure<'a> (h_res_archive: &ArchiveInfo, 
+                                     l_res_archive: &ArchiveInfo,
+                                     h_res_points: &'a mut [point::Point],
+                                     h_anchor_timestamp: u64, timestamp: u64)
+    -> ((u64, &'a mut [point::Point]), Option<(u64, &'a mut [point::Point])>) {
+
     let h_res_start_index = {
-        if h_base_timestamp == 0 {
+        if h_anchor_timestamp == 0 {
             0
         } else {
-            let l_interval_start = l_res_archive.interval_ceiling(base_timestamp);
+            let l_interval_start = l_res_archive.interval_ceiling(timestamp);
 
             // TODO: this can be negative. Does that change timestamp understanding?
-            let timespan  = l_interval_start as i64 - h_base_timestamp as i64;
-            // panic!("timespan: {} - {} = {}", l_interval_start as i64, h_base_timestamp as i64, l_interval_start as i64 - h_base_timestamp as i64);
+            let timespan  = l_interval_start as i64 - h_anchor_timestamp as i64;
+
             let points = timespan / h_res_archive.seconds_per_point as i64;
-            // panic!("points: {}", points);
 
             // TODO: Work around for modulo not working the same as in python.
             // TODO: OMG, move this craziness somewhere else
@@ -607,45 +611,30 @@ mod tests {
         };
         let l_res_archive = ArchiveInfo {
             offset: 60*12,
-            seconds_per_point: 5,
+            seconds_per_point: 10,
             retention: 75, // 1 minutes 15 seconds
             points: 15
         };
 
         let h_res_points_needed = l_res_archive.seconds_per_point / h_res_archive.seconds_per_point;
-        assert_eq!(h_res_points_needed, 5);
+        assert_eq!(h_res_points_needed, 10);
 
         let mut h_res_points : Vec<Point> = vec![Point{timestamp: 0, value: 0.0}; h_res_points_needed as usize];
-
-        let debug : Vec<(u64,u64)> = (100..100+h_res_archive.retention).map(|ts|{
-            (ts, l_res_archive.interval_ceiling(ts))
-        }).collect();
-        panic!("debug: {:?}", debug);
-
-        // h_res_archive (60 pts) set up as 
-        // alias as if 
-        // [ 40, ... 99]
-        // [ 100, ... 159]
-        // with one wrap around, chosing point_ts to hit the middle
-        // [ base_ts, ..., | point_ts, ... ]
-        // [ 100, ..., | 69, ...  ]
-        let h_res_time_start = 100;
-        let point_ts = 155;
 
         let ((first_index,first_buf), second_op) = downsample_new_read_ops_pure(
             &h_res_archive, &l_res_archive,
             &mut h_res_points[..],
-            100, /* file's base timestamp */
-            155 /* new point's timestamp */
+            100, /* high res archive's base timestamp */
+            119  /* new point's timestamp */
         );
 
-        assert_eq!(first_index, 55);
+        assert_eq!(first_index, 10);
         assert_eq!(first_buf.len(), 5);
 
         assert!(second_op.is_some());
         match second_op {
             Some((second_index,second_buf)) => {
-                assert_eq!(second_buf.len(), 25);
+                assert_eq!(second_buf.len(), 5);
                 assert_eq!(second_index,0);
             },
             None => panic!("shouldn't happen!")
