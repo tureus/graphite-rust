@@ -61,15 +61,9 @@ impl ArchiveInfo {
     }
 
     pub fn read_points (&self, archive_index: ArchiveIndex, points: &mut [Point], mut file: RefMut<File>) {
-        let points_len = points.len() as u64;
-
         let index_start = archive_index.0;
-        let read_to = index_start + points_len;
-        if (index_start + points.len() as u64) > self.points {
-            panic!("self.points: {}, points.len(): {}", self.points, points.len());
-            panic!("index_start: {}, points: {}, read_to: {}", index_start, points.len(), read_to);
-        }
-        // Confirm we aren't ready a contiguous block out of the archive
+        
+         // Confirm we aren't ready a contiguous block out of the archive
         assert!( (index_start + points.len() as u64) <= self.points );
 
         let read_start_offset = self.offset + index_start * POINT_SIZE as u64;

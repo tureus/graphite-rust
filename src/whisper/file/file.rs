@@ -344,25 +344,6 @@ impl WhisperFile {
         }
     }
 
-    // TODO remove with old downsample
-    fn aggregate_samples(&self, points: Vec<&point::Point>, points_possible: u64) -> Option<f64>{
-        let valid_points : Vec<&&point::Point> = points.iter().filter(|p| p.timestamp != 0).map(|p| p).collect();
-
-        let ratio : f32 = valid_points.len() as f32 / points_possible as f32;
-        if ratio < self.header.metadata.x_files_factor {
-            return None;
-        }
-
-        // TODO: we only do aggregation right now!
-        match self.header.metadata.aggregation_type {
-            AggregationType::Average => {
-                let sum = points.iter().map(|p| p.value).fold(0.0, |l, r| l + r);
-                Some(sum / points.len() as f64)
-            },
-            _ => { Some(0.0) }
-        }
-    }
-
     // TODO: don't create new vectors, borrow slice from archive_infos
     fn split(&self, current_time: u64, point_timestamp: u64) -> Option<(&ArchiveInfo, Vec<&ArchiveInfo>)>  {
         let mut archive_iter = self.header.archive_infos.iter();
