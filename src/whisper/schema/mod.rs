@@ -57,57 +57,6 @@ impl Schema {
     }
 }
 
-fn retention_capture_to_pair(regex_match: regex::Captures) -> Option<RetentionPolicy> {
-    let precision_opt = regex_match.at(1);
-    let precision_mult = regex_match.at(2).unwrap_or("s");
-    let retention_opt = regex_match.at(3);
-    let retention_mult = regex_match.at(4);
-
-    if precision_opt.is_some() && retention_opt.is_some() {
-        let precision = {
-            let base_precision = precision_opt.unwrap().parse::<u64>().unwrap();
-            base_precision * mult_str_to_num(precision_mult)
-        };
-
-        let retention = {
-            let base_retention = retention_opt.unwrap().parse::<u64>().unwrap();
-
-            match retention_mult {
-                Some(mult_str) => {
-                    base_retention * mult_str_to_num(mult_str)
-                },
-                None => {
-                    // user has not provided a multipler so this is interpreted
-                    // as the number of points so we have to
-                    // calculate retention from the number of points
-                    base_retention * precision
-                }
-            }
-        };
-
-        let retention_spec = RetentionPolicy {
-            precision: precision,
-            retention: retention
-        };
-
-        Some(retention_spec)
-    } else {
-        None
-    }
-}
-
-fn parse_spec_to_retention_policy(spec: &str) -> Option<RetentionPolicy> {
-    // TODO: regex should be built as const using macro regex!
-    // but that's only available in nightlies.
-    let retention_matcher = regex::Regex::new({r"^(\d+)([smhdwy])?:(\d+)([smhdwy])?$"}).unwrap();
-    match retention_matcher.captures(spec) {
-        Some(regex_match) => {
-            retention_capture_to_pair(regex_match)
-        },
-        None => None
-    }
-}
-
 fn validate_retention_policies(expanded_pairs: &Vec<(&String, &Option<RetentionPolicy>)> ) {
     let _ : Vec<()> = expanded_pairs.iter().map(|pair: &(&String, &Option<RetentionPolicy>)| {
         let (ref string, ref opt) = *pair;
