@@ -133,7 +133,7 @@ fn cmd_create(args: Args, path: &str) {
     let schema = Schema::new_from_retention_specs(args.arg_timespec);
     let new_result = WhisperFile::new(path, schema);
     match new_result {
-        Ok(whisper_file) => println!("Success! {:?}", whisper_file),
+        Ok(whisper_file) => println!("Success! {}", whisper_file),
         Err(why) => println!("Failed: {:?}", why)
     }
 }
