@@ -6,7 +6,7 @@ extern crate env_logger;
 extern crate rustc_serialize;
 extern crate docopt;
 
-use graphite::whisper;
+use graphite::whisper::{ WhisperFile, Point };
 
 use docopt::Docopt;
 static USAGE: &'static str = "
@@ -34,9 +34,9 @@ pub fn main(){
     println!("args: {:?}", args);
 }
 
-pub fn write_test_point(point: whisper::point::Point){
+pub fn write_test_point(point: Point){
     let path = "./test/fixtures/60-1440-1440-168-10080-52.wsp";
-    let open_result = whisper::file::open(path);
+    let open_result = WhisperFile::open(path);
 
     match open_result {
         Ok(mut f) => {

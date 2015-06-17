@@ -100,18 +100,17 @@ impl fmt::Display for WhisperFile {
     }
 }
 
-// TODO move to impl
-pub fn open(path: &str) -> Result<WhisperFile, Error> {
-    let file = try!(OpenOptions::new().read(true).write(true)
-                        .create(false).open(path));
-
-    let header = try!(read_header(&file));
-    let whisper_file = WhisperFile { header: header, handle: RefCell::new(file) };
-
-    Ok(whisper_file)
-}
-
 impl WhisperFile {
+    pub fn open(path: &str) -> Result<WhisperFile, Error> {
+        let file = try!(OpenOptions::new().read(true).write(true)
+                            .create(false).open(path));
+
+        let header = try!(read_header(&file));
+        let whisper_file = WhisperFile { header: header, handle: RefCell::new(file) };
+
+        Ok(whisper_file)
+    }
+
     pub fn new(path: &str, schema: Schema /* , _: Metadata */) -> Result<WhisperFile, Error> {
         let opened_file = try!(OpenOptions::new().read(true).write(true).create(true).open(path));
         WhisperFile::write_data_layout(opened_file, schema)
@@ -470,7 +469,7 @@ mod tests {
     use std::io::SeekFrom;
 
     use super::super::archive_info::{ ArchiveInfo, ArchiveIndex, BucketName };
-    use super::{ WhisperFile, build_write_op, open };
+    use super::{ WhisperFile, build_write_op };
     use super::puur;
     use whisper::point::Point;
     use whisper::schema::{ Schema, RetentionPolicy };
@@ -524,7 +523,7 @@ mod tests {
     fn bench_opening_a_file(b: &mut Bencher) {
         let path = "test/fixtures/60-1440.wsp";
         // TODO: how is this so fast? 7ns seems crazy. caching involved?
-        b.iter(|| open(path).unwrap() );
+        b.iter(|| WhisperFile::open(path).unwrap() );
     }
 
     #[bench]
@@ -674,7 +673,7 @@ mod tests {
 
     #[test]
     fn test_read_point() {
-        let file = open("test/fixtures/60-1440.wsp").unwrap();
+        let file = WhisperFile::open("test/fixtures/60-1440.wsp").unwrap();
         let offset = file.header.archive_infos[0].offset;
         // read the first point of the first archive
         let point = file.read_point(offset);
@@ -683,7 +682,7 @@ mod tests {
 
     #[test]
     fn test_read_points() {
-        let file = open("test/fixtures/60-1440.wsp").unwrap();
+        let file = WhisperFile::open("test/fixtures/60-1440.wsp").unwrap();
         let offset = file.header.archive_infos[0].offset;
         // read the first point of the first archive
 
@@ -747,7 +746,7 @@ mod tests {
 
     #[test]
     fn test_split_first_archive() {
-        let file = open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let file = WhisperFile::open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
         let current_time = time::get_time().sec as u64;
         let point_timestamp = current_time - 100;
         let (best,rest) = file.find_highest_res_archive(current_time, point_timestamp).unwrap();
@@ -784,7 +783,7 @@ mod tests {
 
     #[test]
     fn test_split_second_archive() {
-        let file = open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let file = WhisperFile::open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
         let current_time = time::get_time().sec as u64;
 
         // one sample past the first archive's retention
@@ -817,7 +816,7 @@ mod tests {
 
     #[test]
     fn test_split_no_archive() {
-        let file = open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let file = WhisperFile::open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
         let current_time = time::get_time().sec as u64;
 
         // one sample past the first archive's retention

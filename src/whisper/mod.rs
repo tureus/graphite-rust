@@ -12,3 +12,6 @@ extern crate byteorder;
 pub mod file;
 pub mod point;
 pub mod schema;
+
+pub use self::file::WhisperFile;
+pub use self::point::Point;

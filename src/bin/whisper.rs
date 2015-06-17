@@ -8,7 +8,7 @@ extern crate docopt;
 extern crate time;
 
 use docopt::Docopt;
-use graphite::whisper;
+use graphite::whisper::{ WhisperFile, Point };
 use graphite::whisper::schema::Schema;
 
 static USAGE: &'static str = "
@@ -76,7 +76,7 @@ pub fn main(){
 }
 
 fn cmd_info(path: &str) {
-    let file_open = whisper::file::open(path);
+    let file_open = WhisperFile::open(path);
     match file_open {
         Ok(whisper_file) => println!("{}", whisper_file),
         Err(why) => {
@@ -86,7 +86,7 @@ fn cmd_info(path: &str) {
 }
 
 fn cmd_dump(path: &str) {
-    let file_open = whisper::file::open(path);
+    let file_open = WhisperFile::open(path);
     match file_open {
         Ok(whisper_file) => println!("{:?}", whisper_file),
         Err(why) => {
@@ -96,8 +96,8 @@ fn cmd_dump(path: &str) {
 }
 
 fn cmd_update(args: Args, path: &str, current_time: u64) {
-    let mut file = whisper::file::open(path).unwrap();
-    let point = whisper::point::Point{
+    let mut file = WhisperFile::open(path).unwrap();
+    let point = Point{
         timestamp: args.arg_timestamp.parse::<u64>().unwrap(),
         value: args.arg_value.parse::<f64>().unwrap()
     };
@@ -107,8 +107,8 @@ fn cmd_update(args: Args, path: &str, current_time: u64) {
 }
 
 fn cmd_mark(args: Args, path: &str, current_time: u64) {
-    let mut file = whisper::file::open(path).unwrap();
-    let point = whisper::point::Point{
+    let mut file = WhisperFile::open(path).unwrap();
+    let point = Point{
         timestamp: current_time,
         value: args.arg_value.parse::<f64>().unwrap()
     };
@@ -118,9 +118,9 @@ fn cmd_mark(args: Args, path: &str, current_time: u64) {
 
 fn cmd_thrash(args: Args, path: &str, current_time: u64) {
     let times = args.arg_times.parse::<u64>().unwrap();
-    let mut file = whisper::file::open(path).unwrap();
+    let mut file = WhisperFile::open(path).unwrap();
     for index in 1..times {
-        let point = whisper::point::Point{
+        let point = Point{
             timestamp: current_time+index,
             value: args.arg_value.parse::<f64>().unwrap()
         };
@@ -131,7 +131,7 @@ fn cmd_thrash(args: Args, path: &str, current_time: u64) {
 
 fn cmd_create(args: Args, path: &str) {
     let schema = Schema::new_from_retention_specs(args.arg_timespec);
-    let new_result = whisper::file::WhisperFile::new(path, schema);
+    let new_result = WhisperFile::new(path, schema);
     match new_result {
         Ok(whisper_file) => println!("Success! {:?}", whisper_file),
         Err(why) => println!("Failed: {:?}", why)

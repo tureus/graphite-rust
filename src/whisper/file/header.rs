@@ -49,7 +49,7 @@ fn parses_60_1440() {
     use std::io::SeekFrom;
     
     let path = "./test/fixtures/60-1440.wsp";
-    let f = file::open(path).unwrap();
+    let f = file::WhisperFile::open(path).unwrap();
 
     // A literal Header
     let expected = Header {
