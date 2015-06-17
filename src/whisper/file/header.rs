@@ -46,6 +46,8 @@ pub fn read_header(mut file: &File) -> Result<Header, Error> {
 
 #[test]
 fn parses_60_1440() {
+    use std::io::SeekFrom;
+    
     let path = "./test/fixtures/60-1440.wsp";
     let f = file::open(path).unwrap();
 
@@ -59,7 +61,7 @@ fn parses_60_1440() {
         },
         archive_infos: vec![
             archive_info::ArchiveInfo {
-                offset: 28,
+                offset: SeekFrom::Start(28),
                 seconds_per_point: 60,
                 points: 1440,
                 retention: 60*1440

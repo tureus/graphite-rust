@@ -16,7 +16,7 @@ This crate provides the graphite ecosystem of tools.
  - [X] Write to single archive
  - [X] Write through all archives with downsampling
  - [X] Create files
- - [ ] Read many points
+ - [X] Read many points
  - [ ] Lock files
  - [ ] Cache data for sampling (PROFILING)
  - [ ] `mmap` files (PROFILING)
@@ -25,6 +25,7 @@ This crate provides the graphite ecosystem of tools.
  - [ ] Pickle daemon
  - [ ] HTTP frontend
  - [ ] Make logging useful for ops
+ - [ ] Validate .wsp when opening (archives need to cleanly multiply, etc)
 
 ## Documentation
 

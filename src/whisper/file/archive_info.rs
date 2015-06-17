@@ -11,14 +11,18 @@ pub const ARCHIVE_INFO_DISK_SIZE : usize = 12;
 // TODO: Don't think we need Copy/Clone. Just added it to make tests easier to write.
 #[derive(PartialEq,Copy,Clone,Debug)]
 pub struct ArchiveInfo {
-    pub offset: u64,
+    pub offset: SeekFrom,
     pub seconds_per_point: u64,
     pub points: u64,
     pub retention: u64,
 }
 
-#[derive(Debug, PartialEq)]
+// Index in to an archive, 0..points.len
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct ArchiveIndex(pub u64);
+
+// A normalized timestamp
+pub struct BucketName(pub u64);
 
 pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
     let mut cursor = Cursor::new(buf);
@@ -27,7 +31,7 @@ pub fn slice_to_archive_info(buf: &[u8]) -> ArchiveInfo {
     let points = cursor.read_u32::<BigEndian>().unwrap();
 
     ArchiveInfo {
-        offset: offset as u64,
+        offset: SeekFrom::Start(offset as u64),
         seconds_per_point: seconds_per_point as u64,
         points: points as u64,
         retention: (seconds_per_point * points) as u64
@@ -39,25 +43,46 @@ impl ArchiveInfo {
         self.points * POINT_SIZE as u64
     }
 
-    pub fn calculate_seek(&self, point: &Point, base_timestamp: u64) -> SeekFrom {
-        if base_timestamp == 0 {
-            return SeekFrom::Start(self.offset);
+    pub fn calculate_seek(&self, point: &Point, archive_anchor: BucketName) -> SeekFrom {
+        if archive_anchor.0 == 0 {
+
+            return self.offset;
+
         } else {
 
-            let file_offset = {
-                let time_since_base_time = (point.timestamp - base_timestamp) as u64;
-                let points_away_from_base_time = time_since_base_time / self.seconds_per_point;
-                let point_size = POINT_SIZE as u64;
-                let bytes_away_from_offset = (points_away_from_base_time * point_size) as u64;
-                self.offset + (bytes_away_from_offset % (self.size_in_bytes()))
-            };
+            let time_since_base_time = (point.timestamp - archive_anchor.0) as u64;
+            let points_away_from_base_time = time_since_base_time / self.seconds_per_point;
+            let point_size = POINT_SIZE as u64;
+            let bytes_away_from_offset = (points_away_from_base_time * point_size) as u64;
 
-            return SeekFrom::Start(file_offset);
+            match self.offset {
+                SeekFrom::Start(offset) => {
+                    SeekFrom::Start(offset + (bytes_away_from_offset % (self.size_in_bytes())))
+                },
+                _ => panic!("we only use SeekFrom::Start")
+            }
+
         }
     }
 
-    pub fn interval_ceiling(&self, timestamp: u64) -> u64 {
-        timestamp - (timestamp % self.seconds_per_point)
+    pub fn bucket(&self, timestamp: u64) -> BucketName {
+        let bucket_name = timestamp - (timestamp % self.seconds_per_point);
+        BucketName(bucket_name)
+    }
+
+    pub fn anchor_bucket(&self, mut file: RefMut<File>) -> BucketName {
+        let mut points_buf : [u8; 12] = [0; 12];
+
+        let point = {
+            file.seek(self.offset).unwrap();
+
+            let mut buf_ref : &mut [u8] = &mut points_buf;
+            file.read(buf_ref).unwrap();
+
+            buf_to_point(buf_ref)
+        };
+
+        BucketName(point.timestamp)
     }
 
     pub fn read_points (&self, archive_index: ArchiveIndex, points: &mut [Point], mut file: RefMut<File>) {
@@ -66,7 +91,12 @@ impl ArchiveInfo {
          // Confirm we aren't ready a contiguous block out of the archive
         assert!( (index_start + points.len() as u64) <= self.points );
 
-        let read_start_offset = self.offset + index_start * POINT_SIZE as u64;
+        let read_start_offset = match self.offset {
+            SeekFrom::Start(offset) => {
+                offset + index_start * POINT_SIZE as u64
+            },
+            _ => panic!("We only use SeekFrom::Start")
+        };
         let mut points_buf = vec![0; points.len() * POINT_SIZE];
 
         file.seek( SeekFrom::Start(read_start_offset) ).unwrap();
@@ -86,7 +116,7 @@ impl ArchiveInfo {
 #[test]
 fn test_size_in_bytes(){
     let archive_info = ArchiveInfo {
-        offset: 28,
+        offset: SeekFrom::Start(28),
         seconds_per_point: 60,
         retention: 60*5,
         points: 5
