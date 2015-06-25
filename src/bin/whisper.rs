@@ -11,6 +11,8 @@ use docopt::Docopt;
 use graphite::whisper::{ WhisperFile, Point };
 use graphite::whisper::schema::Schema;
 
+use std::path::Path;
+
 static USAGE: &'static str = "
 Whisper is the fast file manipulator
 
@@ -52,9 +54,11 @@ pub fn main(){
                             .unwrap_or_else(|e| e.exit());
 
     let arg_file = args.arg_file.clone();
-    let path = unsafe {
+    let path_str : &str = unsafe {
         arg_file.slice_unchecked(0, args.arg_file.len())
     };
+    let path = Path::new(path_str);
+
 
     let current_time = time::get_time().sec as u64;
 
@@ -75,7 +79,7 @@ pub fn main(){
     }
 }
 
-fn cmd_info(path: &str) {
+fn cmd_info(path: &Path) {
     let file_open = WhisperFile::open(path);
     match file_open {
         Ok(whisper_file) => println!("{}", whisper_file),
@@ -85,7 +89,7 @@ fn cmd_info(path: &str) {
     }
 }
 
-fn cmd_dump(path: &str) {
+fn cmd_dump(path: &Path) {
     let file_open = WhisperFile::open(path);
     match file_open {
         Ok(whisper_file) => println!("{:?}", whisper_file),
@@ -95,7 +99,7 @@ fn cmd_dump(path: &str) {
     }
 }
 
-fn cmd_update(args: Args, path: &str, current_time: u64) {
+fn cmd_update(args: Args, path: &Path, current_time: u64) {
     let mut file = WhisperFile::open(path).unwrap();
     let point = Point{
         timestamp: args.arg_timestamp.parse::<u64>().unwrap(),
@@ -106,7 +110,7 @@ fn cmd_update(args: Args, path: &str, current_time: u64) {
     file.write(current_time, point);
 }
 
-fn cmd_mark(args: Args, path: &str, current_time: u64) {
+fn cmd_mark(args: Args, path: &Path, current_time: u64) {
     let mut file = WhisperFile::open(path).unwrap();
     let point = Point{
         timestamp: current_time,
@@ -116,7 +120,7 @@ fn cmd_mark(args: Args, path: &str, current_time: u64) {
     file.write(current_time, point);
 }
 
-fn cmd_thrash(args: Args, path: &str, current_time: u64) {
+fn cmd_thrash(args: Args, path: &Path, current_time: u64) {
     let times = args.arg_times.parse::<u64>().unwrap();
     let mut file = WhisperFile::open(path).unwrap();
     for index in 1..times {
@@ -129,7 +133,7 @@ fn cmd_thrash(args: Args, path: &str, current_time: u64) {
     }
 }
 
-fn cmd_create(args: Args, path: &str) {
+fn cmd_create(args: Args, path: &Path) {
     let schema = Schema::new_from_retention_specs(args.arg_timespec);
     let new_result = WhisperFile::new(path, schema);
     match new_result {

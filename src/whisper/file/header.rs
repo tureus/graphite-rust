@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::io::{ Error, ErrorKind };
+use std::path::Path;
 
 #[cfg(test)]
 use super::file;
@@ -48,7 +49,7 @@ pub fn read_header(mut file: &File) -> Result<Header, Error> {
 fn parses_60_1440() {
     use std::io::SeekFrom;
     
-    let path = "./test/fixtures/60-1440.wsp";
+    let path = Path::new("./test/fixtures/60-1440.wsp");
     let f = file::WhisperFile::open(path).unwrap();
 
     // A literal Header

@@ -5,6 +5,7 @@ use std::fmt;
 use num::iter::{ range_step_inclusive, RangeStepInclusive };
 use std::cell::RefCell;
 use std::io::Error;
+use std::path::Path;
 
 extern crate libc;
 use self::libc::funcs::posix01::unistd::ftruncate;
@@ -101,7 +102,7 @@ impl fmt::Display for WhisperFile {
 }
 
 impl WhisperFile {
-    pub fn open(path: &str) -> Result<WhisperFile, Error> {
+    pub fn open(path: &Path) -> Result<WhisperFile, Error> {
         let file = try!(OpenOptions::new().read(true).write(true)
                             .create(false).open(path));
 
@@ -111,7 +112,7 @@ impl WhisperFile {
         Ok(whisper_file)
     }
 
-    pub fn new(path: &str, schema: Schema /* , _: Metadata */) -> Result<WhisperFile, Error> {
+    pub fn new(path: &Path, schema: Schema /* , _: Metadata */) -> Result<WhisperFile, Error> {
         let opened_file = try!(OpenOptions::new().read(true).write(true).create(true).open(path));
         WhisperFile::write_data_layout(opened_file, schema)
     }
@@ -175,7 +176,7 @@ impl WhisperFile {
 
     // Would love to get better stats. How many page misses, how many archive reads, how many samples.
     pub fn write(&mut self, current_time: u64, point: point::Point) {
-
+        debug!("writing point: {:?}", point);
         let search_opt = self.find_highest_res_archive(current_time, point.timestamp);
         let search_result = search_opt.expect("no archives satisfy current time");
         let (high_precision_archive, rest) = search_result;
@@ -467,6 +468,7 @@ mod tests {
     extern crate time;
 
     use std::io::SeekFrom;
+    use std::path::{ Path, PathBuf };
 
     use super::super::archive_info::{ ArchiveInfo, ArchiveIndex, BucketName };
     use super::{ WhisperFile, build_write_op };
@@ -476,7 +478,8 @@ mod tests {
     use whisper::file::metadata::{ Metadata, AggregationType };
 
     fn build_60_1440_wsp(prefix: &str) -> WhisperFile {
-        let path = format!("test/fixtures/{}.wsp", prefix);
+        let path_string = format!("test/fixtures/{}.wsp", prefix);
+        let path = PathBuf::from(path_string);
         let schema = Schema {
             retention_policies: vec![
                 RetentionPolicy {
@@ -486,11 +489,13 @@ mod tests {
             ]
         };
 
-        WhisperFile::new(&path[..], schema).unwrap()
+        WhisperFile::new(path.as_path(), schema).unwrap()
     }
 
     fn build_60_1440_1440_168_10080_52(prefix: &str) -> WhisperFile {
-        let path = format!("test/fixtures/{}.wsp", prefix);
+        let path_string : String = format!("test/fixtures/{}.wsp", prefix);
+        let path = PathBuf::from(path_string);
+
         let specs = vec![
             "1m:1h".to_string(),
             "1h:1w".to_string(),
@@ -498,7 +503,7 @@ mod tests {
         ];
         let schema = Schema::new_from_retention_specs(specs);
 
-        WhisperFile::new(&path[..], schema).unwrap()
+        WhisperFile::new(path.as_path(), schema).unwrap()
     }
 
     #[bench]
@@ -521,7 +526,7 @@ mod tests {
 
     #[bench]
     fn bench_opening_a_file(b: &mut Bencher) {
-        let path = "test/fixtures/60-1440.wsp";
+        let path = Path::new("test/fixtures/60-1440.wsp");
         // TODO: how is this so fast? 7ns seems crazy. caching involved?
         b.iter(|| WhisperFile::open(path).unwrap() );
     }
@@ -673,7 +678,8 @@ mod tests {
 
     #[test]
     fn test_read_point() {
-        let file = WhisperFile::open("test/fixtures/60-1440.wsp").unwrap();
+        let path = Path::new("test/fixtures/60-1440.wsp");
+        let file = WhisperFile::open(path).unwrap();
         let offset = file.header.archive_infos[0].offset;
         // read the first point of the first archive
         let point = file.read_point(offset);
@@ -682,7 +688,7 @@ mod tests {
 
     #[test]
     fn test_read_points() {
-        let file = WhisperFile::open("test/fixtures/60-1440.wsp").unwrap();
+        let file = WhisperFile::open(Path::new("test/fixtures/60-1440.wsp")).unwrap();
         let offset = file.header.archive_infos[0].offset;
         // read the first point of the first archive
 
@@ -702,7 +708,7 @@ mod tests {
         ];
         let schema = Schema::new_from_retention_specs(specs);
 
-        let file = WhisperFile::new("test/fixtures/new_has_correct_metadata.wsp", schema).unwrap();
+        let file = WhisperFile::new(Path::new("test/fixtures/new_has_correct_metadata.wsp"), schema).unwrap();
         let header = file.header;
 
         let expected_metadata = Metadata {
@@ -746,7 +752,7 @@ mod tests {
 
     #[test]
     fn test_split_first_archive() {
-        let file = WhisperFile::open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let file = WhisperFile::open(Path::new("test/fixtures/60-1440-1440-168-10080-52.wsp")).unwrap();
         let current_time = time::get_time().sec as u64;
         let point_timestamp = current_time - 100;
         let (best,rest) = file.find_highest_res_archive(current_time, point_timestamp).unwrap();
@@ -783,7 +789,7 @@ mod tests {
 
     #[test]
     fn test_split_second_archive() {
-        let file = WhisperFile::open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let file = WhisperFile::open(Path::new("test/fixtures/60-1440-1440-168-10080-52.wsp")).unwrap();
         let current_time = time::get_time().sec as u64;
 
         // one sample past the first archive's retention
@@ -816,7 +822,7 @@ mod tests {
 
     #[test]
     fn test_split_no_archive() {
-        let file = WhisperFile::open("test/fixtures/60-1440-1440-168-10080-52.wsp").unwrap();
+        let file = WhisperFile::open(Path::new("test/fixtures/60-1440-1440-168-10080-52.wsp")).unwrap();
         let current_time = time::get_time().sec as u64;
 
         // one sample past the first archive's retention
