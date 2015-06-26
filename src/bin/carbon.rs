@@ -1,5 +1,4 @@
 #![feature(collections)]
-#![feature(path_ext)]
 #![feature(test)]
 #![feature(unmarked_api)]
 
@@ -34,89 +33,10 @@ struct Args {
     flag_chan: usize
 }
 
-#[derive(Debug, PartialEq)]
-struct CarbonMsg {
-    pub metric_rel_path: PathBuf,
-    point: Point
-}
-
-#[derive(Debug)]
-enum Error {
-    BadDatagram
-}
-
-#[derive(Debug)]
-struct CarbonError(Error,String);
-
-impl CarbonMsg {
-    pub fn from_datagram(datagram_buffer: &[u8]) -> Result<CarbonMsg, CarbonError> {
-        let datagram = match str::from_utf8(datagram_buffer) {
-            Ok(body) => body,
-            Err(_) => return Err( CarbonError(Error::BadDatagram, "invalid utf8 character".to_string() ))
-        };
-
-        // TODO: this seems too complicated just to detect/remove "\n"
-        // And it scans the string as utf8 codepoints.
-        // Will this just be ASCII... is it safe to skip utf8-ness? (probs not)
-        let (without_newline,newline_str) = {
-            let len = datagram.len();
-            ( 
-              datagram.slice_chars(0, len-1),
-              datagram.slice_chars(len-1, len)
-            )
-        };
-        if newline_str != "\n" {
-            return Err( CarbonError(Error::BadDatagram, format!("Datagram `{}` is missing a newline `{}`", datagram, newline_str)))
-        }
-
-        let parts : Vec<&str> = without_newline.split(" ").collect();
-        if parts.len() != 3 {
-            return Err( CarbonError(Error::BadDatagram, format!("Datagram `{}` does not have 3 parts", datagram) ) );
-        }
-
-        // TODO: copies to msg. Used to be a reference from datagram_buffer
-        // but figuring out how to keep the datagram_buffer (which was on the heap)
-        // alive long enough was tricky.
-        let metric_name = parts[0].to_string();
-        let mut rel_path : String = metric_name.replace(".","/");
-        rel_path.push_str(".wsp");
-
-        let value = {
-            let value_parse = parts[1].parse::<f64>();
-            match value_parse {
-                Ok(val) => val,
-                Err(_) => {
-                    return Err( CarbonError(Error::BadDatagram, format!("Datagram value `{}` is not a float", parts[1]) ) )
-                }
-            }
-        };
-
-        let timestamp = {
-            let timestamp_parse = parts[2].parse::<u64>();
-            match timestamp_parse {
-                Ok(val) => val,
-                Err(_) => {
-                    return Err( CarbonError(Error::BadDatagram, format!("Datagram value `{}` is not an unsigned integer", parts[2])) )
-                }
-            }
-        };
-
-        let msg = CarbonMsg {
-            metric_rel_path: PathBuf::from(rel_path),
-            point: Point {
-                value: value,
-                timestamp: timestamp                
-            }
-        };
-        Ok(msg)
-
-    }
-}
-
 mod carbon {
     pub mod udp {
-        use super::super::CarbonMsg;
-        use super::cache::Cache;
+        use graphite::carbon::CarbonMsg;
+        use graphite::carbon::Cache;
 
         use std::net::UdpSocket;
         use std::io::Error;
@@ -185,134 +105,6 @@ mod carbon {
             Box::new( buf )
         }
     }
-
-    // The cache models the whisper files on the filesystem
-    // It handles putting all datapoints in to the files
-    pub mod cache {
-        use super::super::CarbonMsg;
-        use graphite::whisper::WhisperFile;
-        use graphite::whisper::schema::Schema;
-        use std::collections::HashMap;
-        use std::path::{ Path, PathBuf };
-        use std::fs::{ PathExt, DirBuilder };
-        use std::io;
-
-        // #[derive(Debug)]
-        // pub enum CacheErrorType {
-        //     BadBasePath
-        // }
-
-        // #[derive(Debug)]
-        // pub struct CacheError {
-        //     reason: CacheErrorType
-        // }
-
-        #[derive(Debug)]
-        pub struct Cache {
-            base_path: PathBuf,
-            open_files: HashMap<PathBuf, WhisperFile>
-        }
-
-        impl Cache {
-            pub fn new(base_path: &Path) -> Cache {
-                Cache {
-                    base_path: base_path.to_path_buf(),
-                    open_files: HashMap::new()
-                }
-            }
-
-            pub fn write(&mut self, current_time: u64, incoming: CarbonMsg) -> Result<(), io::Error> {
-
-                let mut whisper_file = try!( self.resolve(incoming.metric_rel_path) );
-                whisper_file.write(current_time, incoming.point);
-                Ok(())
-
-            }
-
-            // Find or initialize the whisper file
-            fn resolve(&mut self, metric_rel_path: PathBuf) -> Result<&mut WhisperFile, io::Error> {
-
-                if self.open_files.contains_key(&metric_rel_path) {
-
-                    debug!("file cache hit. resolved {:?}", metric_rel_path);
-                    Ok( self.open_files.get_mut(&metric_rel_path).unwrap() )
-
-                } else {
-
-                    debug!("file cache miss. resolving {:?}", metric_rel_path);
-
-                    let path_for_insert = metric_rel_path.clone();
-                    let path_for_relookup = metric_rel_path.clone();
-
-                    let path_on_disk = self.base_path.join(metric_rel_path);
-
-                    let whisper_file = if path_on_disk.exists() && path_on_disk.is_file() {
-
-                        debug!("`{:?}` exists on disk. opening.", path_on_disk);
-                        // TODO: might make sense push this logic to instantiation of CarbonMsg
-                        // TODO: shouldn't be a UTF8 error cuz of std::str::from_utf8() in CarbonMsg input
-                        try!( WhisperFile::open(&path_on_disk) )
-
-                    } else {
-
-                        debug!("`{:?}` file does not exist on disk. creating default.", path_on_disk);
-                        let default_specs = vec!["1s:60s".to_string(), "1m:1y".to_string()];
-                        let schema = Schema::new_from_retention_specs(default_specs);
-
-                        // Verify the folder structure is present.
-                        // TODO: benchmark (for my own curiosity)
-                        // TODO: assumption here is that we do not store in root FS
-                        if !path_on_disk.parent().unwrap().is_dir() {
-                            debug!("`{:?}` must be created first", path_on_disk.parent());
-                            try!( DirBuilder::new().recursive(true).create( path_on_disk.parent().unwrap() ) );
-                        }
-                        try!( WhisperFile::new(&path_on_disk, schema) )
-
-                    };
-
-                    self.open_files.insert(path_for_insert, whisper_file);
-                    Ok( self.open_files.get_mut(&path_for_relookup).unwrap() )
-
-                }
-
-            }
-        }
-
-        #[cfg(test)]
-        mod test {
-            extern crate test;
-            extern crate graphite;
-
-            use self::test::Bencher;
-
-            use std::path::{ Path };
-
-            use super::Cache;
-            use super::super::super::CarbonMsg;
-
-            use graphite::whisper::Point;
-
-            #[bench]
-            fn test_opening_new_whisper_file(b: &mut Bencher){
-                let mut cache = Cache::new(Path::new("/tmp"));
-                let current_time = 1434598525;
-
-                b.iter(move ||{
-
-                    let metric = CarbonMsg {
-                        metric_rel_path: Path::new("hey/there/bear.wsp").to_path_buf(),
-                        point: Point {
-                            value: 0.0,
-                            timestamp: 1434598525
-                        }
-                    };
-
-                    cache.write(current_time, metric).unwrap();
-
-                });
-            }
-        }
-    }
 }
 
 pub fn main(){
@@ -343,7 +135,7 @@ mod tests {
     extern crate graphite;
     use graphite::whisper::Point;
 
-    use super::CarbonMsg;
+    use graphite::carbon::CarbonMsg;
     use std::path::Path;
 
     #[bench]

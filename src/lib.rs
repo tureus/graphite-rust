@@ -34,6 +34,7 @@ Status of the codes:
 
 #![crate_name = "graphite"]
 #![feature(trace_macros)]
+#![feature(path_ext, dir_builder, slice_chars)]
 
 #![feature(test)]
 extern crate test;
@@ -50,3 +51,4 @@ extern crate num;
 extern crate regex;
 
 pub mod whisper;
+pub mod carbon;
