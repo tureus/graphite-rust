@@ -1,10 +1,6 @@
 use std::fs::File;
 use std::io::Read;
 use std::io::{ Error, ErrorKind };
-use std::path::Path;
-
-#[cfg(test)]
-use super::file;
 
 use super::metadata;
 use super::archive_info;
@@ -45,30 +41,41 @@ pub fn read_header(mut file: &File) -> Result<Header, Error> {
     Ok(header)
 }
 
-#[test]
-fn parses_60_1440() {
-    use std::io::SeekFrom;
-    
-    let path = Path::new("./test/fixtures/60-1440.wsp");
-    let f = file::WhisperFile::open(path).unwrap();
 
-    // A literal Header
-    let expected = Header {
-        metadata: metadata::Metadata {
-            aggregation_type: metadata::AggregationType::Average,
-            max_retention: 86400,
-            x_files_factor: 0.5,
-            archive_count: 1
-        },
-        archive_infos: vec![
-            archive_info::ArchiveInfo {
-                offset: SeekFrom::Start(28),
-                seconds_per_point: 60,
-                points: 1440,
-                retention: 60*1440
-            }
-        ]
-    };
+#[cfg(test)]
+mod test {
+    use super::Header;
+    use std::path::Path;
+    use super::super::file::WhisperFile;
+    use super::super::metadata::{ Metadata, AggregationType };
+    use super::super::archive_info;
 
-    assert_eq!(f.header, expected)
+    #[test]
+    fn parses_60_1440() {
+        use std::io::SeekFrom;
+        
+        let path = Path::new("./test/fixtures/60-1440.wsp");
+        let f = WhisperFile::open(path).unwrap();
+
+        // A literal Header
+        let expected = Header {
+            metadata: Metadata {
+                aggregation_type: AggregationType::Average,
+                max_retention: 86400,
+                x_files_factor: 0.5,
+                archive_count: 1
+            },
+            archive_infos: vec![
+                archive_info::ArchiveInfo {
+                    offset: SeekFrom::Start(28),
+                    seconds_per_point: 60,
+                    points: 1440,
+                    retention: 60*1440
+                }
+            ]
+        };
+
+        assert_eq!(f.header, expected)
+    }
+
 }
