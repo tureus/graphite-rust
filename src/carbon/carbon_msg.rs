@@ -82,3 +82,50 @@ impl CarbonMsg {
 
     }
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate test;
+    use self::test::Bencher;
+
+    use super::super::super::whisper::Point;
+    use super::super::CarbonMsg;
+    use std::path::Path;
+
+    #[bench]
+    fn bench_good_datagram(b: &mut Bencher){
+        let datagram = "home.pets.bears.lua.purr_volume 100.00 1434598525\n";
+
+        b.iter(|| {
+            let msg_opt = CarbonMsg::from_datagram(datagram.as_bytes());
+            msg_opt.unwrap();
+        });
+    }
+
+    #[test]
+    fn test_good_datagram() {
+        let datagram = "home.pets.bears.lua.purr_volume 100.00 1434598525\n";
+        let msg_opt = CarbonMsg::from_datagram(datagram.as_bytes());
+        let msg = msg_opt.unwrap();
+
+        let expected = CarbonMsg {
+            metric_rel_path: Path::new("home/pets/bears/lua/purr_volume.wsp").to_path_buf(),
+            point: Point {
+                value: 100.0,
+                timestamp: 1434598525
+            }
+        };
+
+        assert_eq!(msg, expected);
+    }
+
+    #[bench]
+    fn bench_bad_datagram(b: &mut Bencher){
+        let datagram = "home.pets.monkeys.squeeky.squeeks asdf 1434598525\n";
+
+        b.iter(|| {
+            let msg_opt = CarbonMsg::from_datagram(datagram.as_bytes());
+            assert!(msg_opt.is_err());
+        });
+    }
+}

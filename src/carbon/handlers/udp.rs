@@ -8,13 +8,13 @@ extern crate time;
 use std::sync::mpsc::sync_channel;
 use std::thread;
 
-use std::path::Path;
+use super::config::Config;
 
-pub fn run_server(bind_spec: &str, chan_depth: usize) -> Result<(),Error> {
-    let (tx, rx) = sync_channel(chan_depth);
+pub fn run_server(config: &Config) -> Result<(),Error> {
+    let (tx, rx) = sync_channel(config.chan_depth);
 
-    let base_path = Path::new("/Users/xavierlange/code/rust/graphite-rust/test/fixtures");
-    let mut cache = Cache::new(base_path.clone());
+    // Why can't I just `clone()` the base path?
+    let mut cache = Cache::new(& (config.base_path.to_owned()) );
 
     info!("spawning file writer...");
     thread::spawn(move || {
@@ -37,9 +37,9 @@ pub fn run_server(bind_spec: &str, chan_depth: usize) -> Result<(),Error> {
         }
     });
 
-    info!("server binding to `{}`", bind_spec);
+    info!("server binding to `{:?}`", config.bind_spec);
     let mut buf_box = create_buffer();
-    let socket = try!( UdpSocket::bind(bind_spec) );
+    let socket = try!( UdpSocket::bind(config.bind_spec) );
     loop {
         let (bytes_read,_) = {
             match socket.recv_from( &mut buf_box[..] ) {

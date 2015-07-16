@@ -21,7 +21,7 @@ This crate provides the graphite ecosystem of tools.
  - [ ] `mmap` files (PROFILING)
  - [X] UDP daemon
  - [ ] TCP daemon
- - [ ] Custom schema support
+ - [ ] Custom schema support when creating new WSPs
  - [ ] Pickle daemon
  - [ ] HTTP frontend
  - [ ] Make logging useful for ops

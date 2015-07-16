@@ -11,4 +11,4 @@ mod handlers;
 
 pub use self::cache::Cache;
 pub use self::carbon_msg::CarbonMsg;
-pub use self::handlers::udp;
+pub use self::handlers::{ udp, Config };

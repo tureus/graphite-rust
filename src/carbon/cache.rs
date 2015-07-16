@@ -6,7 +6,7 @@ use super::super::whisper::WhisperFile;
 use super::super::whisper::schema::Schema;
 use std::collections::HashMap;
 use std::path::{ Path, PathBuf };
-use std::fs::{ PathExt, DirBuilder, metadata };
+use std::fs::{ PathExt, DirBuilder };
 use std::io;
 
 #[derive(Debug)]
