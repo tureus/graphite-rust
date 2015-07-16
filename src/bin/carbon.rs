@@ -22,7 +22,7 @@ Usage: carbon [--port PORT] [--bind HOST] [--chan DEPTH]
 Options:
     --bind HOST             host to bind to [default: 0.0.0.0:2003]
     --chan DEPTH            how many carbon messages can be in-flight [default: 1000]
-    --storage-path STORAGE_PATH  where to find the whisper file [default: /tmp]
+    --storage-path STORAGEPATH  where to find the whisper file [default: /tmp]
 ";
 
 #[derive(RustcDecodable, Debug)]
