@@ -1,5 +1,5 @@
 use super::super::CarbonMsg;
-use super::super::Cache;
+use super::super::super::whisper::cache::Cache; // LOL
 
 use std::net::UdpSocket;
 use std::io::Error;
@@ -9,6 +9,7 @@ use std::sync::mpsc::sync_channel;
 use std::thread;
 
 use super::config::Config;
+
 
 pub fn run_server(config: &Config) -> Result<(),Error> {
     let (tx, rx) = sync_channel(config.chan_depth);

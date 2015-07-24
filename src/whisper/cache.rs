@@ -1,7 +1,7 @@
 // The cache models the whisper files on the filesystem
 // It handles putting all datapoints in to the files
 
-use super::CarbonMsg;
+use super::super::carbon::CarbonMsg;
 use super::super::whisper::WhisperFile;
 use super::super::whisper::schema::Schema;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use std::io;
 
 #[derive(Debug)]
 pub struct Cache {
-    base_path: PathBuf,
+    pub base_path: PathBuf,
     open_files: HashMap<PathBuf, WhisperFile>
 }
 
@@ -87,7 +87,7 @@ mod test {
     use std::path::{ Path };
 
     use super::Cache;
-    use super::super::CarbonMsg;
+    use super::super::super::carbon::CarbonMsg;
 
     use super::super::super::whisper::Point;
 

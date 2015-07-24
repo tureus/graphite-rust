@@ -50,5 +50,12 @@ extern crate num;
 
 extern crate regex;
 
+// Graphite server deps
+extern crate iron;
+extern crate router;
+extern crate urlencoded;
+extern crate glob;
+
 pub mod whisper;
 pub mod carbon;
+pub mod graphite;

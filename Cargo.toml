@@ -13,6 +13,9 @@ name="whisper"
 [[bin]]
 name="carbon"
 
+[[bin]]
+name="graphite"
+
 [dependencies]
 byteorder = "*"
 gcc = "*"
@@ -24,6 +27,10 @@ docopt = "0.6.64"
 num = "*"
 regex = "*"
 libc = "*"
+iron = "*"
+router = "*"
+urlencoded = "*"
+glob = "*"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]

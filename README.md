@@ -1,12 +1,14 @@
-This crate provides the graphite ecosystem of tools.
+The graphite ecosystem in one easy-to-install package.
 
 [![Build status](https://api.travis-ci.org/tureus/graphite-rust.png)](https://travis-ci.org/tureus/graphite-rust)
 
 ## Building
 
+Note: you'll need a nightly rust build to build this
+
   $ git clone git@github.com:tureus/graphite-rust.git
   $ cd graphite-rust
-  $ cargo build
+  $ cargo build --release
   $ RUST_LOG=debug ./target/debug/carbon
 
 ## Tasks
