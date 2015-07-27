@@ -55,6 +55,7 @@ extern crate iron;
 extern crate router;
 extern crate urlencoded;
 extern crate glob;
+extern crate persistent;
 
 pub mod whisper;
 pub mod carbon;

@@ -16,8 +16,8 @@ Graphite is the HTTP REST API for querying data from the database
 Usage:
     graphite server
     graphite expand [--storage-path STORAGEPATH] <pattern>
-
 Options:
+
     --bind HOST                 host to bind to [default: 0.0.0.0:8080]
     --storage-path STORAGEPATH  where to find the whisper file [default: /tmp]
 ";
@@ -42,7 +42,7 @@ pub fn main(){
                             .and_then(|d| d.decode())
                             .unwrap_or_else(|e| e.exit());
 
-    let bind_spec = unsafe {
+    let bind_spec : &str = unsafe {
         args.flag_bind.slice_unchecked(0, args.flag_bind.len())
     };
 
@@ -52,7 +52,8 @@ pub fn main(){
     };
 
     if args.cmd_server {
-        server::run(config);
+        let cache = Cache::new(config.base_path);
+        server::run(config, cache);
     } else if args.cmd_expand {
         let cache = Cache::new(config.base_path);
         expander::expand(args.arg_pattern, &cache);
