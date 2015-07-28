@@ -47,6 +47,7 @@ mod test {
     use super::Header;
     use std::path::Path;
     use super::super::file::WhisperFile;
+    use super::super::RefCellWhisperFile;
     use super::super::metadata::{ Metadata, AggregationType };
     use super::super::archive_info;
 
@@ -55,7 +56,7 @@ mod test {
         use std::io::SeekFrom;
         
         let path = Path::new("./test/fixtures/60-1440.wsp");
-        let f = WhisperFile::open(path).unwrap();
+        let f = RefCellWhisperFile::open(path).unwrap();
 
         // A literal Header
         let expected = Header {

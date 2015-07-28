@@ -2,6 +2,7 @@ use std::io::{ Cursor, SeekFrom, Seek, Read  };
 use byteorder::{ BigEndian, ReadBytesExt, ByteOrder };
 use std::fs::File;
 use std::cell::RefMut;
+use std::sync::MutexGuard;
 
 use whisper::point::{Point, POINT_SIZE, buf_to_point};
 
@@ -70,7 +71,22 @@ impl ArchiveInfo {
         BucketName(bucket_name)
     }
 
-    pub fn anchor_bucket(&self, mut file: RefMut<File>) -> BucketName {
+    pub fn anchor_bucket_ref_mut(&self, mut file: RefMut<File>) -> BucketName {
+        let mut points_buf : [u8; 12] = [0; 12];
+
+        let point = {
+            file.seek(self.offset).unwrap();
+
+            let mut buf_ref : &mut [u8] = &mut points_buf;
+            file.read(buf_ref).unwrap();
+
+            buf_to_point(buf_ref)
+        };
+
+        BucketName(point.timestamp)
+    }
+
+    pub fn anchor_bucket_guard(&self, mut file: MutexGuard<File>) -> BucketName {
         let mut points_buf : [u8; 12] = [0; 12];
 
         let point = {
@@ -86,6 +102,32 @@ impl ArchiveInfo {
     }
 
     pub fn read_points (&self, archive_index: ArchiveIndex, points: &mut [Point], mut file: RefMut<File>) {
+        let index_start = archive_index.0;
+        
+         // Confirm we aren't ready a contiguous block out of the archive
+        assert!( (index_start + points.len() as u64) <= self.points );
+
+        let read_start_offset = match self.offset {
+            SeekFrom::Start(offset) => {
+                offset + index_start * POINT_SIZE as u64
+            },
+            _ => panic!("We only use SeekFrom::Start")
+        };
+        let mut points_buf = vec![0; points.len() * POINT_SIZE];
+
+        file.seek( SeekFrom::Start(read_start_offset) ).unwrap();
+        let bytes_read = file.read(&mut points_buf[..]).unwrap();
+        assert_eq!(bytes_read, points_buf.len());
+
+        let buf_chunks = points_buf.chunks(POINT_SIZE);
+        let index_chunk_pairs = (0..points.len()).zip(buf_chunks);
+
+        for (index,chunk) in index_chunk_pairs {
+            points[index] = buf_to_point(chunk);
+        }
+    }
+
+    pub fn read_points_guard(&self, archive_index: ArchiveIndex, points: &mut [Point], mut file: MutexGuard<File>) {
         let index_start = archive_index.0;
         
          // Confirm we aren't ready a contiguous block out of the archive

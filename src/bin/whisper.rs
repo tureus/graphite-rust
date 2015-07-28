@@ -8,7 +8,7 @@ extern crate docopt;
 extern crate time;
 
 use docopt::Docopt;
-use graphite::whisper::{ WhisperFile, Point };
+use graphite::whisper::{ WhisperFile, RefCellWhisperFile, Point };
 use graphite::whisper::schema::Schema;
 
 use std::path::Path;
@@ -80,7 +80,7 @@ pub fn main(){
 }
 
 fn cmd_info(path: &Path) {
-    let file_open = WhisperFile::open(path);
+    let file_open = RefCellWhisperFile::open(path);
     match file_open {
         Ok(whisper_file) => println!("{}", whisper_file),
         Err(why) => {
@@ -90,7 +90,7 @@ fn cmd_info(path: &Path) {
 }
 
 fn cmd_dump(path: &Path) {
-    let file_open = WhisperFile::open(path);
+    let file_open = RefCellWhisperFile::open(path);
     match file_open {
         Ok(whisper_file) => println!("{:?}", whisper_file),
         Err(why) => {
@@ -100,7 +100,7 @@ fn cmd_dump(path: &Path) {
 }
 
 fn cmd_update(args: Args, path: &Path, current_time: u64) {
-    let mut file = WhisperFile::open(path).unwrap();
+    let mut file = RefCellWhisperFile::open(path).unwrap();
     let point = Point{
         timestamp: args.arg_timestamp.parse::<u64>().unwrap(),
         value: args.arg_value.parse::<f64>().unwrap()
@@ -111,7 +111,7 @@ fn cmd_update(args: Args, path: &Path, current_time: u64) {
 }
 
 fn cmd_mark(args: Args, path: &Path, current_time: u64) {
-    let mut file = WhisperFile::open(path).unwrap();
+    let mut file = RefCellWhisperFile::open(path).unwrap();
     let point = Point{
         timestamp: current_time,
         value: args.arg_value.parse::<f64>().unwrap()
@@ -122,7 +122,7 @@ fn cmd_mark(args: Args, path: &Path, current_time: u64) {
 
 fn cmd_thrash(args: Args, path: &Path, current_time: u64) {
     let times = args.arg_times.parse::<u64>().unwrap();
-    let mut file = WhisperFile::open(path).unwrap();
+    let mut file = RefCellWhisperFile::open(path).unwrap();
     for index in 1..times {
         let point = Point{
             timestamp: current_time+index,
@@ -135,7 +135,7 @@ fn cmd_thrash(args: Args, path: &Path, current_time: u64) {
 
 fn cmd_create(args: Args, path: &Path) {
     let schema = Schema::new_from_retention_specs(args.arg_timespec);
-    let new_result = WhisperFile::new(path, schema);
+    let new_result = RefCellWhisperFile::new(path, schema);
     match new_result {
         Ok(whisper_file) => println!("Success! {}", whisper_file),
         Err(why) => println!("Failed: {:?}", why)

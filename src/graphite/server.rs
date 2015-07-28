@@ -16,6 +16,7 @@ use super::super::whisper::Cache;
 // but it adds one more level of indirection. Caveat emptor folks.
 struct CacheHolder;
 impl iron::typemap::Key for CacheHolder {
+    // TODO: my brain hurts. what does this mean?
     type Value = Cache;
 }
 
@@ -57,7 +58,7 @@ pub fn run(config: Config, cache: Cache) {
     let mut chain = Chain::new(router);
     chain.link( State::<CacheHolder>::both(cache) );
 
-    Iron::new(router).http(config.bind_spec).unwrap(); 
+    Iron::new(chain).http(config.bind_spec).unwrap(); 
 }
 
 // TODO: not sure how to test url encoded query middleware :(

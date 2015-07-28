@@ -1,18 +1,17 @@
 // The cache models the whisper files on the filesystem
 // It handles putting all datapoints in to the files
 
-use super::super::carbon::CarbonMsg;
-use super::super::whisper::WhisperFile;
+use carbon::CarbonMsg;
+use whisper::{ WhisperFile, MutexWhisperFile };
 use super::super::whisper::schema::Schema;
 use std::collections::HashMap;
 use std::path::{ Path, PathBuf };
 use std::fs::{ PathExt, DirBuilder };
 use std::io;
 
-#[derive(Debug)]
 pub struct Cache {
     pub base_path: PathBuf,
-    open_files: HashMap<PathBuf, WhisperFile>
+    open_files: HashMap< PathBuf, Box< MutexWhisperFile > >
 }
 
 impl Cache {
@@ -24,15 +23,15 @@ impl Cache {
     }
 
     pub fn write(&mut self, current_time: u64, incoming: CarbonMsg) -> Result<(), io::Error> {
+        // unimplemented!()
+        let whisper_file_box = try!( self.resolve(incoming.metric_rel_path) );
 
-        let mut whisper_file = try!( self.resolve(incoming.metric_rel_path) );
-        whisper_file.write(current_time, incoming.point);
+        whisper_file_box.write(current_time, incoming.point);
         Ok(())
-
     }
 
     // Find or initialize the whisper file
-    fn resolve(&mut self, metric_rel_path: PathBuf) -> Result<&mut WhisperFile, io::Error> {
+    fn resolve(&mut self, metric_rel_path: PathBuf) -> Result< &mut Box<MutexWhisperFile>, io::Error> {
 
         if self.open_files.contains_key(&metric_rel_path) {
 
@@ -53,7 +52,7 @@ impl Cache {
                 debug!("`{:?}` exists on disk. opening.", path_on_disk);
                 // TODO: might make sense push this logic to instantiation of CarbonMsg
                 // TODO: shouldn't be a UTF8 error cuz of std::str::from_utf8() in CarbonMsg input
-                try!( WhisperFile::open(&path_on_disk) )
+                try!( MutexWhisperFile::open(&path_on_disk) )
 
             } else {
 
@@ -68,11 +67,11 @@ impl Cache {
                     debug!("`{:?}` must be created first", path_on_disk.parent());
                     try!( DirBuilder::new().recursive(true).create( path_on_disk.parent().unwrap() ) );
                 }
-                try!( WhisperFile::new(&path_on_disk, schema) )
+                try!( MutexWhisperFile::new(&path_on_disk, schema) )
 
             };
 
-            self.open_files.insert(path_for_insert, whisper_file);
+            self.open_files.insert(path_for_insert, Box::new(whisper_file) );
             Ok( self.open_files.get_mut(&path_for_relookup).unwrap() )
 
         }

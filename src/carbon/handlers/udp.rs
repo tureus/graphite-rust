@@ -6,16 +6,18 @@ use std::io::Error;
 extern crate time;
 
 use std::sync::mpsc::sync_channel;
+use std::sync::{ RwLock };
 use std::thread;
 
 use super::config::Config;
 
 
-pub fn run_server(config: &Config) -> Result<(),Error> {
+pub fn run_server<'a>(config: &Config) -> Result<(),Error> {
     let (tx, rx) = sync_channel(config.chan_depth);
 
     // Why can't I just `clone()` the base path?
-    let mut cache = Cache::new(& (config.base_path.to_owned()) );
+    let raw_cache = Cache::new(&config.base_path.to_owned());
+    let locked_cache = RwLock::new(raw_cache);
 
     info!("spawning file writer...");
     thread::spawn(move || {
@@ -25,8 +27,10 @@ pub fn run_server(config: &Config) -> Result<(),Error> {
 
             match recv {
                 Ok(msg) => {
-                    match cache.write(current_time, msg) {
-                        Ok(_) => (),
+                    let mut cache = locked_cache.write().unwrap();
+                    let write_res = cache.write(current_time, msg);
+                    match write_res {
+                        Ok(()) => (),
                         Err(reason) => debug!("err: {:?}", reason)
                     }
                 },
