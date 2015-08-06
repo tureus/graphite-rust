@@ -1,7 +1,11 @@
 [package]
-name = "graphite-rust"
+name = "graphite"
 version = "0.0.1"
 authors = ["Xavier Lange <xrlange@gmail.com>"]
+description = "A fast, pure rust graphite implementation. Includes whisper, carbon, and graphite."
+license = "MIT"
+homepage = "https://www.github.com/tureus/graphite-rust"
+repository = "https://github.com/tureus/graphite-rust.git"
 
 [lib]
 name="graphite"
@@ -28,11 +32,13 @@ num = "*"
 regex = "*"
 libc = "*"
 iron = "*"
-router = "*"
+# router = "*"
 urlencoded = "*"
 glob = "*"
 # iron-test = "*"
 persistent = "*" # Not a great name for a HTTP middle lib... there's already a Haskell lib for doing real data persistence with the same name.
+[dependencies.router]
+git = "https://github.com/iron/router.git"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]

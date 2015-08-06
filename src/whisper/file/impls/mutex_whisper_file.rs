@@ -49,7 +49,7 @@ impl fmt::Debug for MutexWhisperFile {
             try!(writeln!(f, "    seconds per point: {}", archive_info.seconds_per_point));
             try!(writeln!(f, "    points: {}", archive_info.points));
             try!(writeln!(f, "    retention: {} (s)", archive_info.retention));
-            try!(write!(f, "    size: {} (bytes)\n", archive_info.size_in_bytes()));
+            try!(writeln!(f, "    size: {} (bytes)", archive_info.size_in_bytes()));
 
             // Print out all the data from this archive
             try!(writeln!(f, "    data"));

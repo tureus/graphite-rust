@@ -2,6 +2,9 @@ mod config;
 pub mod server;
 mod error;
 pub mod expander;
+mod middleware;
+mod handlers;
+mod cache_holder;
 
 pub use self::config::Config;
 

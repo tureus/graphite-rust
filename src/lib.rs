@@ -56,6 +56,7 @@ extern crate router;
 extern crate urlencoded;
 extern crate glob;
 extern crate persistent;
+// extern crate bodyparser;
 
 pub mod whisper;
 pub mod carbon;

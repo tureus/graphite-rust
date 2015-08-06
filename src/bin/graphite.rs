@@ -56,7 +56,7 @@ pub fn main(){
         server::run(config, cache);
     } else if args.cmd_expand {
         let cache = Cache::new(config.base_path);
-        expander::expand(args.arg_pattern, &cache);
+        expander::expand(&args.arg_pattern, &cache);
     } else {
         println!("command not specified");
     }
