@@ -37,8 +37,9 @@ urlencoded = "*"
 glob = "*"
 # iron-test = "*"
 persistent = "*" # Not a great name for a HTTP middle lib... there's already a Haskell lib for doing real data persistence with the same name.
-[dependencies.router]
-git = "https://github.com/iron/router.git"
+router = "*"
+# [dependencies.router]
+# git = "https://github.com/iron/router.git"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]
