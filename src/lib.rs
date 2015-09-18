@@ -34,7 +34,6 @@ Status of the codes:
 
 #![crate_name = "graphite"]
 #![feature(trace_macros)]
-#![feature(path_ext, dir_builder, slice_chars)]
 
 #![feature(test)]
 extern crate test;
@@ -58,6 +57,8 @@ extern crate glob;
 extern crate persistent;
 // extern crate bodyparser;
 
-pub mod whisper;
+extern crate whisper;
+
 pub mod carbon;
-pub mod graphite;
+// scuttled until I want to fix all the iron related issues
+// pub mod graphite; 

@@ -17,12 +17,15 @@ use docopt::Docopt;
 static USAGE: &'static str = "
 Carbon is the network service for writing data to disk
 
-Usage: carbon [--port PORT] [--bind HOST] [--chan DEPTH]
+Usage:
+  carbon [--port PORT] [--bind HOST] [--chan DEPTH]
+  carbon --help
 
 Options:
-    --bind HOST             host to bind to [default: 0.0.0.0:2003]
-    --chan DEPTH            how many carbon messages can be in-flight [default: 1000]
-    --storage-path STORAGEPATH  where to find the whisper file [default: /tmp]
+  -h --help                   show this screen
+  --bind HOST                 host to bind to [default: 0.0.0.0:2003]
+  --chan DEPTH                how many carbon messages can be in-flight [default: 1000]
+  --storage-path STORAGEPATH  where to find the whisper file [default: /tmp]
 ";
 
 #[derive(RustcDecodable, Debug)]

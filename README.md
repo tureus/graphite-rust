@@ -38,3 +38,9 @@ Note: you'll need a nightly rust build to build this
 Documentation for the whisper file format is slim/nil. Clone the official repo and take a look at `whisper.py`
 
   $ git clone git@github.com:graphite-project/whisper.git
+
+## Talking to Carbon
+
+On OSX you need to specify IPv4:
+
+  echo -e "local.random.diceroll 4 `date +%s`" | nc -4u -w0

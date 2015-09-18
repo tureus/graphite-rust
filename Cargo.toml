@@ -1,6 +1,6 @@
 [package]
 name = "graphite"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Xavier Lange <xrlange@gmail.com>"]
 description = "A fast, pure rust graphite implementation. Includes whisper, carbon, and graphite."
 license = "MIT"
@@ -11,14 +11,14 @@ repository = "https://github.com/tureus/graphite-rust.git"
 name="graphite"
 path="src/lib.rs"
 
-[[bin]]
-name="whisper"
+# [[bin]]
+# name="whisper"
 
 [[bin]]
 name="carbon"
 
-[[bin]]
-name="graphite"
+# [[bin]]
+# name="graphite"
 
 [dependencies]
 byteorder = "*"
@@ -38,8 +38,12 @@ glob = "*"
 # iron-test = "*"
 persistent = "*" # Not a great name for a HTTP middle lib... there's already a Haskell lib for doing real data persistence with the same name.
 router = "*"
+
 # [dependencies.router]
 # git = "https://github.com/iron/router.git"
+
+[dependencies.whisper]
+path = "../whisper-mmap"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]
