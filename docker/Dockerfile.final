@@ -1,0 +1,8 @@
+FROM ubuntu
+
+ADD carbon /usr/bin/carbon
+
+ENV RUST_LOG info
+
+VOLUME /data
+ENTRYPOINT ["/usr/bin/carbon", "--storage-path", "/data"]
