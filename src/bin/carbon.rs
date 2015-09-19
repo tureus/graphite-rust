@@ -18,7 +18,7 @@ static USAGE: &'static str = "
 Carbon is the network service for writing data to disk
 
 Usage:
-  carbon [--port PORT] [--bind HOST] [--chan DEPTH]
+  carbon [--port PORT] [--bind HOST] [--chan DEPTH] [--storage-path STORAGEPATH]
   carbon --help
 
 Options:
