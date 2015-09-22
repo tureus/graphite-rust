@@ -55,4 +55,9 @@ On OSX you need to specify IPv4:
 
 On linux:
 
-  echo "local.random.diceroll 4 `date +%s`" | nc -u -w1 localhost 2003
+  echo "local.random.diceroll 4 `date +%s`" | nc -u -w 1 localhost 2003
+
+Memory stats:
+
+  yum install -y sysstat
+  toolbox sar -B 1

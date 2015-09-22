@@ -17,7 +17,7 @@ pub fn run_server<'a>(config: &Config) -> Result<(),Error> {
     // Why can't I just `clone()` the base path?
     let default_specs = vec!["1s:60s".to_string(), "1m:1y".to_string()];
     let schema = Schema::new_from_retention_specs(default_specs);
-    let raw_cache = WhisperCache::new(&config.base_path.to_owned(), schema);
+    let raw_cache = WhisperCache::new(&config.base_path.to_owned(), config.cache_size, schema);
     let locked_cache = RwLock::new(raw_cache);
 
     info!("spawning file writer...");
