@@ -17,8 +17,19 @@ path="src/lib.rs"
 [[bin]]
 name="carbon"
 
-# [[bin]]
-# name="graphite"
+## [[bin]]
+## name="graphite"
+## [[graphite.dependencies]] # not valid code!
+## iron = "*"
+## # router = "*"
+## urlencoded = "*"
+## glob = "*"
+## # iron-test = "*"
+## persistent = "*" # Not a great name for a HTTP middle lib... there's already a Haskell lib for doing real data persistence with the same name.
+## router = "*"
+
+## Out of date deps?
+# num = "*"
 
 [dependencies]
 byteorder = "*"
@@ -26,23 +37,16 @@ gcc = "*"
 time = "*"
 log = "*"
 env_logger = "*"
-rustc-serialize = "0.3.14"
 docopt = "0.6.64"
-num = "*"
 regex = "*"
 libc = "*"
-iron = "*"
-# router = "*"
-urlencoded = "*"
-glob = "*"
-# iron-test = "*"
-persistent = "*" # Not a great name for a HTTP middle lib... there's already a Haskell lib for doing real data persistence with the same name.
-router = "*"
+rustc-serialize = "*"
 
 # [dependencies.router]
 # git = "https://github.com/iron/router.git"
 
 [dependencies.whisper]
+git = "https://github.com/tureus/whisper"
 # path = "../whisper-mmap"
 
 # The documentation profile, used for `cargo doc`

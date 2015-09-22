@@ -2,6 +2,14 @@ The graphite ecosystem in one easy-to-install package.
 
 [![Build status](https://api.travis-ci.org/tureus/graphite-rust.png)](https://travis-ci.org/tureus/graphite-rust)
 
+## Docker
+
+By far the easiest experience for getting up and running
+
+  docker pull xrlx/graphite
+  mkdir data
+  docker run -v ./data:/data xrlx/graphite
+
 ## Building
 
 Note: you'll need a nightly rust build to build this
@@ -43,4 +51,8 @@ Documentation for the whisper file format is slim/nil. Clone the official repo a
 
 On OSX you need to specify IPv4:
 
-  echo -e "local.random.diceroll 4 `date +%s`" | nc -4u -w0
+  echo -e "local.random.diceroll 4 `date +%s`" | nc -4u -w0 localhost 2003
+
+On linux:
+
+  echo "local.random.diceroll 4 `date +%s`" | nc -u -w1 localhost 2003

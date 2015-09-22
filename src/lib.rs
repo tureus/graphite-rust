@@ -45,20 +45,10 @@ extern crate byteorder;
 extern crate log;
 extern crate env_logger;
 
-extern crate num;
-
 extern crate regex;
-
-// Graphite server deps
-extern crate iron;
-extern crate router;
-extern crate urlencoded;
-extern crate glob;
-extern crate persistent;
-// extern crate bodyparser;
 
 extern crate whisper;
 
 pub mod carbon;
-// scuttled until I want to fix all the iron related issues
+// TODO: scuttled until I want to fix all the iron related issues
 // pub mod graphite; 

@@ -23,7 +23,9 @@ pub fn run_server<'a>(config: &Config) -> Result<(),Error> {
     info!("spawning file writer...");
     thread::spawn(move || {
         loop {
+            debug!("waiting for message on rx");
             let recv = rx.recv();
+            debug!("got message off rx");
             // let current_time = time::get_time().sec as u64;
 
             match recv {
@@ -49,6 +51,8 @@ pub fn run_server<'a>(config: &Config) -> Result<(),Error> {
     let socket = try!( UdpSocket::bind(config.bind_spec) );
     loop {
         let (bytes_read,_) = {
+            debug!("reading from socket");
+
             match socket.recv_from( &mut buf_box[..] ) {
                 Ok(res) => {
                     res
@@ -60,10 +64,15 @@ pub fn run_server<'a>(config: &Config) -> Result<(),Error> {
             }
         };
 
+        debug!("parsing point...");
+
         match NamedPoint::from_datagram(&buf_box[0..bytes_read]) {
-            Ok(msg) => {
+            Ok(msgs) => {
                 // Dies if the receiver is closed
-                tx.send(msg).unwrap();
+                debug!("putting message on tx");
+                for msg in msgs {
+                    tx.send(msg).unwrap();
+                }
             },
             Err(err) => {
                 debug!("wtf mate: {:?}", err);

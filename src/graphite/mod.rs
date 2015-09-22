@@ -1,3 +1,10 @@
+extern crate iron;
+extern crate router;
+extern crate urlencoded;
+extern crate glob;
+extern crate persistent;
+// extern crate bodyparser;
+
 mod config;
 pub mod server;
 mod error;
