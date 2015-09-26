@@ -1,6 +1,7 @@
 #![feature(unmarked_api)]
 
 extern crate graphite;
+extern crate whisper;
 
 #[macro_use]
 extern crate log;
@@ -10,6 +11,7 @@ extern crate docopt;
 extern crate time;
 
 use graphite::carbon;
+use whisper::{ WhisperCache, Schema };
 
 use std::path::Path;
 
@@ -54,6 +56,17 @@ pub fn main(){
         cache_size: args.flag_cache_size
     };
 
-    info!("starting carbon server...");
-    carbon::udp::run_server(&config).unwrap();
+    info!("preparing whisper cache...");
+    let default_specs = vec!["1s:60s".to_string(), "1m:1y".to_string()];
+    let schema = Schema::new_from_retention_specs(default_specs);
+    let cache = WhisperCache::new(&config.base_path.to_owned(), config.cache_size, schema);
+
+    info!("spawning cache writer...");
+    let (tx,_) = carbon::cache_writer::spawn(cache, &config);
+
+    info!("starting UDP listener...");
+    carbon::udp::run_server(tx.clone(), &config).unwrap();
+
+    info!("starting TCP listener...");
+    carbon::tcp::run_server(tx, &config).unwrap();
 }

@@ -1,6 +1,6 @@
 [package]
 name = "graphite"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Xavier Lange <xrlange@gmail.com>"]
 description = "A fast, pure rust graphite implementation. Includes whisper, carbon, and graphite."
 license = "MIT"
@@ -41,13 +41,10 @@ docopt = "0.6.64"
 regex = "*"
 libc = "*"
 rustc-serialize = "*"
+whisper = "*"
 
 # [dependencies.router]
 # git = "https://github.com/iron/router.git"
-
-[dependencies.whisper]
-git = "https://github.com/tureus/whisper"
-# path = "../whisper-mmap"
 
 # The documentation profile, used for `cargo doc`
 [profile.doc]

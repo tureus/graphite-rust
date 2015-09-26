@@ -2,51 +2,14 @@ use whisper::{ WhisperCache, NamedPoint, Schema };
 
 use std::net::UdpSocket;
 use std::io::Error;
-extern crate time;
-
-use std::sync::mpsc::sync_channel;
 use std::sync::{ RwLock };
-use std::thread;
+use std::sync::mpsc::{ sync_channel, SyncSender };
 
-use super::config::Config;
+use super::super::Config;
+use super::Action;
 
-
-pub fn run_server<'a>(config: &Config) -> Result<(),Error> {
-    let (tx, rx) = sync_channel(config.chan_depth);
-
-    // Why can't I just `clone()` the base path?
-    let default_specs = vec!["1s:60s".to_string(), "1m:1y".to_string()];
-    let schema = Schema::new_from_retention_specs(default_specs);
-    let raw_cache = WhisperCache::new(&config.base_path.to_owned(), config.cache_size, schema);
-    let locked_cache = RwLock::new(raw_cache);
-
-    info!("spawning file writer...");
-    thread::spawn(move || {
-        loop {
-            debug!("waiting for message on rx");
-            let recv = rx.recv();
-            debug!("got message off rx");
-            // let current_time = time::get_time().sec as u64;
-
-            match recv {
-                Ok(named_point) => {
-                    let mut cache = locked_cache.write().unwrap();
-                    let write_res = cache.write( named_point );
-
-                    match write_res {
-                        Ok(()) => (),
-                        Err(reason) => debug!("err: {:?}", reason)
-                    }
-                },
-                Err(_) => {
-                    debug!("shutting down writer thread");
-                    return ()
-                }
-            }
-        }
-    });
-
-    info!("server binding to `{:?}`", config.bind_spec);
+pub fn run_server<'a>(tx: SyncSender<Action>, config: &Config) -> Result<(),Error> {
+    info!("UDP server binding to `{:?}`", config.bind_spec);
     let mut buf_box = create_buffer();
     let socket = try!( UdpSocket::bind(config.bind_spec) );
     loop {
@@ -67,11 +30,11 @@ pub fn run_server<'a>(config: &Config) -> Result<(),Error> {
         debug!("parsing point...");
 
         match NamedPoint::from_datagram(&buf_box[0..bytes_read]) {
-            Ok(msgs) => {
+            Ok(named_points) => {
                 // Dies if the receiver is closed
                 debug!("putting message on tx");
-                for msg in msgs {
-                    tx.send(msg).unwrap();
+                for named_point in named_points {
+                    tx.send(Action::Write(named_point)).unwrap();
                 }
             },
             Err(err) => {
