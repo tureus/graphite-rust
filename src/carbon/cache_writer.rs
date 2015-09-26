@@ -1,4 +1,4 @@
-use whisper::{ WhisperCache, NamedPoint };
+use whisper::{ WhisperCache };
 
 use std::thread::{ self, JoinHandle };
 // extern crate time;
