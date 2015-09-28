@@ -61,12 +61,11 @@ pub fn main(){
     let schema = Schema::new_from_retention_specs(default_specs);
     let cache = WhisperCache::new(&config.base_path.to_owned(), config.cache_size, schema);
 
-    info!("spawning cache writer...");
     let (tx,_) = carbon::cache_writer::spawn(cache, &config);
 
-    info!("starting UDP listener...");
-    carbon::udp::run_server(tx.clone(), &config).unwrap();
+    let udp_server = carbon::udp::run_server(tx.clone(), &config).unwrap();
+    let tcp_server = carbon::tcp::run_server(tx, &config).unwrap();
 
-    info!("starting TCP listener...");
-    carbon::tcp::run_server(tx, &config).unwrap();
+    udp_server.join().unwrap();
+    tcp_server.join().unwrap();
 }

@@ -9,19 +9,19 @@ use super::super::Config;
 use super::Action;
 
 pub fn run_server<'a>(tx: SyncSender<Action>, config: &Config) -> Result<JoinHandle<()>,Error> {
-    info!("UDP server binding to `{:?}`", config.bind_spec);
+    info!("UDP server binding to `{}`", config.bind_spec);
     let mut buf_box = create_buffer();
     let socket = try!( UdpSocket::bind(config.bind_spec) );
 
     let join_handle = thread::spawn(move ||{
         loop {
             let (bytes_read,_) = {
-                debug!("reading from socket");
+                // debug!("waiting on recv from socket");
 
                 match socket.recv_from( &mut buf_box[..] ) {
                     Ok(res) => {
                         res
-                    }
+                    },
                     Err(err) => {
                         error!("error reading from socket: {:?}", err);
                         continue;

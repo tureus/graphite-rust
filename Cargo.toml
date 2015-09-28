@@ -1,6 +1,6 @@
 [package]
 name = "graphite"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Xavier Lange <xrlange@gmail.com>"]
 description = "A fast, pure rust graphite implementation. Includes whisper, carbon, and graphite."
 license = "MIT"
