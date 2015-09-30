@@ -57,7 +57,7 @@ pub fn main(){
     };
 
     info!("preparing whisper cache...");
-    let default_specs = vec!["1s:60s".to_string(), "1m:1y".to_string()];
+    let default_specs = vec!["1m:1y".to_string()];
     let schema = Schema::new_from_retention_specs(default_specs);
     let cache = WhisperCache::new(&config.base_path.to_owned(), config.cache_size, schema);
 
