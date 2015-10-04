@@ -6,9 +6,11 @@ The graphite ecosystem in one easy-to-install package.
 
 By far the easiest experience for getting up and running
 
-  docker pull xrlx/graphite
-  mkdir data
-  docker run -v ./data:/data xrlx/graphite
+    docker pull xrlx/graphite
+    mkdir data
+    docker run -v ./data:/data xrlx/graphite
+
+## Docker in Production
 
 How I run `graphite-rust` with `graphite-web` in production:
 
