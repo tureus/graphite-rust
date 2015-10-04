@@ -10,6 +10,13 @@ By far the easiest experience for getting up and running
   mkdir data
   docker run -v ./data:/data xrlx/graphite
 
+How I run `graphite-rust` with `graphite-web` in production:
+
+    $ cat run_graphite.sh
+    docker run -e "RUST_LOG=warning" --name graphite -d -p 2003:2003/udp -p 2003:2003 -v /var/data/graphite:/data xrlx/graphite
+    $ cat run_graphite_web.sh
+    docker run -d -it --name graphite-web -v /var/data/graphite:/opt/graphite/storage/whisper -p 80:80 banno/graphite-web
+
 ## Building
 
 Note: you'll need a nightly rust build to build this
@@ -27,10 +34,11 @@ Note: you'll need a nightly rust build to build this
  - [X] Write through all archives with downsampling
  - [X] Create files
  - [X] Read many points
- - [ND] Lock files (not necessary with memmap pattern?)
- - [ ] `mmap` files (PROFILING)
+ - [ ] Advisory lock files
+ - [x] `mmap` files (PROFILING)
+  - [ ] Use `cfg()` guards to provide conditional checks for sysctl settings
  - [X] UDP daemon
- - [ ] TCP daemon
+ - [X] TCP daemon
  - [ ] Custom schema support when creating new WSPs
  - [ ] Pickle daemon
  - [ ] HTTP frontend
