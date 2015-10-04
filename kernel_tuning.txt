@@ -1,0 +1,24 @@
+# https://www.kernel.org/doc/Documentation/sysctl/vm.txt
+# http://jmoiron.net/
+
+# DEFAULTS
+vm.dirty_background_bytes = 0
+vm.dirty_background_ratio = 10
+vm.dirty_expire_centisecs = 3000
+vm.dirty_bytes = 0
+vm.dirty_ratio = 20
+vm.dirty_writeback_centisecs = 500
+vm.dirtytime_expire_seconds = 43200
+
+# FIRST TRY
+sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centisecs=18000 vm.dirty_writeback_centisecs=3000
+
+# SECOND TRY (smoothing out sync by disabling writeback thread (3000 -> 0))
+sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centisecs=18000 vm.dirty_writeback_centisecs=0
+
+# THIRD TRY (fixed a default schema bug which had artificially small number of dirty pages, kernel died in mysterious way and had iops storm. time to reel it back and run the dirty_writeback every once in a while)
+# Wake up every 3 hours to flush data
+sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centisecs=1080000 vm.dirty_writeback_centisecs=1080000
+
+# FOURTH TRY (constant 400 IOPS, going to try tuning the dirty_background_ratio to 60. NOTE: my readings on IO usage may have been wrong, there could have been another noisey host)
+sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centisecs=1080000 vm.dirty_writeback_centisecs=1080000
