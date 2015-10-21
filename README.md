@@ -2,6 +2,8 @@ The graphite ecosystem in one easy-to-install package.
 
 [![Build status](https://api.travis-ci.org/tureus/graphite-rust.png)](https://travis-ci.org/tureus/graphite-rust)
 
+[![](https://badge.imagelayers.io/xrlx/graphite:latest.svg)](https://imagelayers.io/?images=xrlx/graphite:latest 'Get your own badge on imagelayers.io')
+
 ## Docker
 
 By far the easiest experience for getting up and running
