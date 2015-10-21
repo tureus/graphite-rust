@@ -18,6 +18,7 @@ How I run `graphite-rust` with `graphite-web` in production:
     docker run -e "RUST_LOG=warning" --name graphite -d -p 2003:2003/udp -p 2003:2003 -v /var/data/graphite:/data xrlx/graphite
     $ cat run_graphite_web.sh
     docker run -d -it --name graphite-web -v /var/data/graphite:/opt/graphite/storage/whisper -p 80:80 banno/graphite-web
+    $ sudo sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centisecs=1080000 vm.dirty_writeback_centisecs=1080000
 
 ## Building
 

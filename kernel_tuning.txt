@@ -20,5 +20,4 @@ sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centise
 # Wake up every 3 hours to flush data
 sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centisecs=1080000 vm.dirty_writeback_centisecs=1080000
 
-# FOURTH TRY (constant 400 IOPS, going to try tuning the dirty_background_ratio to 60. NOTE: my readings on IO usage may have been wrong, there could have been another noisey host)
 sysctl -w vm.dirty_background_ratio=30 vm.dirty_ratio=60 vm.dirty_expire_centisecs=1080000 vm.dirty_writeback_centisecs=1080000
